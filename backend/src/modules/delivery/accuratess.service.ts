@@ -205,6 +205,12 @@ export class AccuratessService {
     this.logger.log(
       `Accuratess login ok (user=${json.data?.login?.user?.username ?? username})`,
     );
+    // Opt-in: ACCURATESS_PRINT_TOKEN=true prints the full token for UI paste
+    if (this.config.get<string>('ACCURATESS_PRINT_TOKEN') === 'true') {
+      this.logger.warn(
+        `ACCURATESS_TOKEN (copy into UI settings):\n${token}`,
+      );
+    }
     return token;
   }
 
