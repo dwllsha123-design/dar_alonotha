@@ -338,7 +338,7 @@ export class DeliveryService {
     // خارج طرابلس: إرسال لشركة Accuratess بمفتاح حساب الصفحة إن وُجد
     let accuratessResult: Record<string, unknown> | null = null;
     if (type === 'EXTERNAL') {
-      const account = await this.prisma.externalShippingAccount.findFirst({
+      let account = await this.prisma.externalShippingAccount.findFirst({
         where: {
           isActive: true,
           OR: [
@@ -354,6 +354,18 @@ export class DeliveryService {
           ],
         },
       });
+      if (!account) {
+        account = await this.prisma.externalShippingAccount.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: 'desc' },
+        });
+      }
+      const piecesCount = await this.prisma.orderItem
+        .aggregate({
+          where: { orderId: order.id },
+          _sum: { quantity: true },
+        })
+        .then((r) => Number(r._sum.quantity || 1));
       const shipped = await this.accuratess.saveShipment({
         orderNumber: order.orderNumber,
         senderName,
@@ -365,6 +377,8 @@ export class DeliveryService {
         notes: order.notes,
         price: Number(order.totalAmount || 0),
         deliveryFees: Number(dto.fee ?? order.deliveryFee ?? 0),
+        piecesCount: piecesCount > 0 ? piecesCount : 1,
+        paymentTypeCode: 'COLC',
         sourcePage: senderName,
         sourcePageCode: order.pagePublicCode,
         account: account
@@ -401,10 +415,35 @@ export class DeliveryService {
         ]
           .filter(Boolean)
           .join(' | ');
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: {
+            externalTrackingNumber: trackingNumber,
+            shippingLabelUrl: trackingUrl,
+            fulfillmentError: null,
+            externalResponsePayload: JSON.stringify(shipped),
+            fulfillmentType: 'EXTERNAL',
+            deliveryType: 'EXTERNAL',
+          },
+        });
       } else if (result.skipped) {
         notes = `${notes || ''} | ${result.reason}`;
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: {
+            fulfillmentError: String(result.reason || 'skipped'),
+            externalResponsePayload: JSON.stringify(shipped),
+          },
+        });
       } else if (result.error) {
         notes = `${notes || ''} | Accuratess error: ${result.error}`;
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: {
+            fulfillmentError: String(result.error),
+            externalResponsePayload: JSON.stringify(shipped),
+          },
+        });
       }
     }
 

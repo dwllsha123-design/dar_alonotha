@@ -57,7 +57,12 @@ export class OrderFulfillmentService {
       if (byId) return byId;
     }
 
-    return null;
+    // Fallback: أي حساب شحن نشط محفوظ من الواجهة (عند عدم ربط الصفحة بالطلب)
+    const anyActive = await this.prisma.externalShippingAccount.findFirst({
+      where: { isActive: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return anyActive;
   }
 
   /**
@@ -68,7 +73,7 @@ export class OrderFulfillmentService {
   async routeOrder(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { facebookPage: true },
+      include: { facebookPage: true, items: true },
     });
     if (!order) throw new NotFoundException('الطلب غير موجود');
 
@@ -109,11 +114,22 @@ export class OrderFulfillmentService {
       pageSource,
     });
 
+    if (!account && !this.accuratess.isConfigured(null)) {
+      this.logger.warn(
+        `Accuratess skipped for ${order.orderNumber}: no page shipping token and env not configured`,
+      );
+    }
+
     const senderName =
       account?.label ||
       order.facebookPage?.name ||
       pageSource ||
       'دار الأنوثة';
+
+    const piecesCount = (order.items || []).reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0,
+    );
 
     let externalResult: Record<string, unknown> = {};
     let tracking: string | null = null;
@@ -133,6 +149,8 @@ export class OrderFulfillmentService {
         notes: order.notes,
         price: Number(order.totalAmount || 0),
         deliveryFees: Number(order.deliveryFee || 0),
+        piecesCount: piecesCount > 0 ? piecesCount : 1,
+        paymentTypeCode: 'COLC',
         sourcePage: senderName,
         sourcePageCode: order.pagePublicCode,
         account: account
@@ -150,16 +168,25 @@ export class OrderFulfillmentService {
 
       if ('skipped' in shipped && shipped.skipped) {
         fulfillmentError = String(shipped.reason || 'تم تخطي Accuratess');
+        this.logger.warn(
+          `Accuratess skipped for ${order.orderNumber}: ${fulfillmentError}`,
+        );
       } else if ('ok' in shipped && shipped.ok && shipped.shipment) {
         const s = shipped.shipment as {
           code?: string;
-          id?: string;
+          id?: string | number;
           trackingUrl?: string;
         };
         tracking = String(s.code || s.id || '') || null;
         labelUrl = s.trackingUrl ? String(s.trackingUrl) : null;
+        this.logger.log(
+          `Accuratess OK ${order.orderNumber} tracking=${tracking}`,
+        );
       } else if ('error' in shipped && shipped.error) {
         fulfillmentError = String(shipped.error);
+        this.logger.error(
+          `Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
+        );
       }
     } catch (err) {
       fulfillmentError =

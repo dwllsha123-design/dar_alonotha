@@ -19,14 +19,21 @@ export type AccuratessShipmentPayload = {
   city?: string | null;
   area?: string | null;
   notes?: string | null;
+  /** مبلغ التحصيل عند الدفع عند الاستلام (COLC) */
   price: number;
   deliveryFees?: number;
+  piecesCount?: number;
+  weight?: number;
+  /** COD → COLC (افتراضي)، أو PAID/CASH… */
+  paymentTypeCode?: 'COLC' | 'PAID' | 'CASH' | 'CRDT' | 'VISA';
   sourcePage: string;
   sourcePageCode?: number | null;
   description?: string;
   /** حساب الصفحة الفرعية — إن وُجد يتجاوز التوكن العام */
   account?: AccuratessAccountCreds | null;
 };
+
+type AccuratessZone = { id: number; name: string };
 
 export type AccuratessGqlResult<T> = {
   data?: T;
@@ -343,6 +350,153 @@ export class AccuratessService {
     return { ok: true as const, me: json.data?.me };
   }
 
+  private normalizeZoneName(value?: string | null) {
+    return (value || '')
+      .toString()
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[.\u060C,]+$/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private isPaymentVariantZone(name: string) {
+    return /(بطاقة|الكترون|إلكترون|اونلاين|صباحا|نسائي|دفع)/i.test(name);
+  }
+
+  private pickBestZone(
+    zones: AccuratessZone[],
+    needle?: string | null,
+  ): AccuratessZone | null {
+    if (!zones.length) return null;
+    const n = this.normalizeZoneName(needle);
+    const scored = zones
+      .map((z) => {
+        const zn = this.normalizeZoneName(z.name);
+        let score = 0;
+        if (n && zn === n) score += 100;
+        else if (n && (zn.startsWith(n) || n.startsWith(zn))) score += 70;
+        else if (n && zn.includes(n)) score += 40;
+        if (this.isPaymentVariantZone(z.name)) score -= 50;
+        // Prefer lower IDs (main city rows tend to be early)
+        score += Math.max(0, 20 - Math.min(z.id, 20));
+        return { z, score };
+      })
+      .sort((a, b) => b.score - a.score || a.z.id - b.z.id);
+    return scored[0]?.z || null;
+  }
+
+  private async listZonesDropdown(
+    input: Record<string, unknown>,
+    account?: AccuratessAccountCreds | null,
+  ): Promise<AccuratessZone[]> {
+    const json = await this.request<{
+      listZonesDropdown?: AccuratessZone[];
+    }>(
+      `query Zones($input: ListZonesFilterInput) {
+        listZonesDropdown(input: $input) { id name }
+      }`,
+      { input },
+      account,
+    );
+    return json.data?.listZonesDropdown || [];
+  }
+
+  async resolveServiceId(account?: AccuratessAccountCreds | null): Promise<number> {
+    const fromEnv = Number(this.config.get<string>('ACCURATESS_SERVICE_ID') || '');
+    if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+
+    const json = await this.request<{
+      shippingSettings?: { defaultShippingService?: { id?: number } | null };
+      listShippingServicesDropdown?: Array<{ id: number; name: string }>;
+    }>(
+      `query {
+        shippingSettings { defaultShippingService { id name } }
+        listShippingServicesDropdown { id name }
+      }`,
+      undefined,
+      account,
+    );
+    const def = json.data?.shippingSettings?.defaultShippingService?.id;
+    if (def) return def;
+    const first = json.data?.listShippingServicesDropdown?.[0]?.id;
+    return first || 1;
+  }
+
+  async resolveSenderZones(account?: AccuratessAccountCreds | null): Promise<{
+    senderZoneId: number;
+    senderSubzoneId: number;
+  }> {
+    const envZone = Number(
+      account?.senderZoneId ||
+        this.config.get<string>('ACCURATESS_SENDER_ZONE_ID') ||
+        '1',
+    );
+    const envSub = Number(
+      account?.senderSubzoneId ||
+        this.config.get<string>('ACCURATESS_SENDER_SUBZONE_ID') ||
+        '',
+    );
+    const senderZoneId = Number.isFinite(envZone) && envZone > 0 ? envZone : 1;
+    if (Number.isFinite(envSub) && envSub > 0) {
+      return { senderZoneId, senderSubzoneId: envSub };
+    }
+    const children = await this.listZonesDropdown(
+      { parentId: senderZoneId, active: true },
+      account,
+    );
+    const preferred =
+      this.pickBestZone(children, 'طرابلس') ||
+      children.find((c) => !this.isPaymentVariantZone(c.name)) ||
+      children[0];
+    return {
+      senderZoneId,
+      senderSubzoneId: preferred?.id || senderZoneId,
+    };
+  }
+
+  async resolveRecipientZones(
+    city?: string | null,
+    area?: string | null,
+    account?: AccuratessAccountCreds | null,
+  ): Promise<{ recipientZoneId: number; recipientSubzoneId: number } | null> {
+    const envZone = Number(
+      this.config.get<string>('ACCURATESS_DEFAULT_RECIPIENT_ZONE_ID') || '',
+    );
+    const envSub = Number(
+      this.config.get<string>('ACCURATESS_DEFAULT_RECIPIENT_SUBZONE_ID') || '',
+    );
+    if (Number.isFinite(envZone) && envZone > 0 && Number.isFinite(envSub) && envSub > 0) {
+      return { recipientZoneId: envZone, recipientSubzoneId: envSub };
+    }
+
+    const cityName = (city || '').trim();
+    if (!cityName) return null;
+
+    const matches = await this.listZonesDropdown(
+      { name: cityName, active: true },
+      account,
+    );
+    const zone = this.pickBestZone(matches, cityName);
+    if (!zone) {
+      this.logger.warn(`Accuratess: no zone match for city="${cityName}"`);
+      return null;
+    }
+
+    const children = await this.listZonesDropdown(
+      { parentId: zone.id, active: true },
+      account,
+    );
+    const sub =
+      this.pickBestZone(children, area) ||
+      this.pickBestZone(children, cityName) ||
+      children.find((c) => !this.isPaymentVariantZone(c.name)) ||
+      children[0] ||
+      zone;
+
+    return { recipientZoneId: zone.id, recipientSubzoneId: sub.id };
+  }
+
   /**
    * يرسل الشحنة إلى Accuratess GraphQL (saveShipment)
    * يدعم مفتاح حساب لكل صفحة فرعية عبر payload.account
@@ -360,75 +514,134 @@ export class AccuratessService {
       ? `${payload.sourcePage} (#${payload.sourcePageCode})`
       : payload.sourcePage;
 
-    const input: Record<string, unknown> = {
-      senderName: payload.senderName || payload.sourcePage,
-      recipientName: payload.recipientName,
-      recipientPhone: payload.recipientPhone,
-      recipientMobile: payload.recipientMobile || payload.recipientPhone,
-      recipientAddress: [payload.recipientAddress, payload.area, payload.city]
-        .filter(Boolean)
-        .join(' - '),
-      price: payload.price,
-      notes: [
-        payload.notes,
-        `الراسل=${sourceLabel}`,
-        `reference=${payload.orderNumber}`,
-      ]
-        .filter(Boolean)
-        .join(' | '),
-      description:
-        payload.description ||
-        `طلب ${payload.orderNumber} — الراسل: ${sourceLabel}`,
-      refNumber: `PAGE:${sourceLabel}|ORD:${payload.orderNumber}`,
-    };
-
-    if (payload.deliveryFees != null) {
-      input.notes = `${input.notes} | delivery_fee=${payload.deliveryFees}`;
+    const phone = (payload.recipientPhone || payload.recipientMobile || '').trim();
+    if (!phone) {
+      return { ok: false, error: 'رقم هاتف المستلم مطلوب لإرسال Accuratess' };
     }
 
-    const senderZoneId =
-      payload.account?.senderZoneId ||
-      this.config.get<string>('ACCURATESS_SENDER_ZONE_ID');
-    const senderSubzoneId =
-      payload.account?.senderSubzoneId ||
-      this.config.get<string>('ACCURATESS_SENDER_SUBZONE_ID');
-    const recipientZoneId = this.config.get<string>('ACCURATESS_DEFAULT_RECIPIENT_ZONE_ID');
-    const recipientSubzoneId = this.config.get<string>(
-      'ACCURATESS_DEFAULT_RECIPIENT_SUBZONE_ID',
-    );
-    if (senderZoneId) input.senderZoneId = Number(senderZoneId);
-    if (senderSubzoneId) input.senderSubzoneId = Number(senderSubzoneId);
-    if (recipientZoneId) input.recipientZoneId = Number(recipientZoneId);
-    if (recipientSubzoneId) input.recipientSubzoneId = Number(recipientSubzoneId);
-
-    const query = `
-      mutation SaveShipment($input: ShipmentInput!) {
-        saveShipment(input: $input) {
-          id
-          code
-          trackingUrl
-          refNumber
-          notes
-          description
-          status
-        }
-      }
-    `;
-
     try {
-      const json = await this.gql<{ saveShipment?: Record<string, unknown> }>(
-        query,
-        { input },
+      const serviceId = await this.resolveServiceId(payload.account);
+      const sender = await this.resolveSenderZones(payload.account);
+      const recipient = await this.resolveRecipientZones(
+        payload.city,
+        payload.area,
         payload.account,
       );
-
-      if (json.errors?.length) {
-        const msg = json.errors.map((e) => e.message).join('; ');
-        this.logger.error(`Accuratess saveShipment failed: ${msg}`);
-        return { ok: false, error: msg, raw: json };
+      if (!recipient) {
+        return {
+          ok: false,
+          error: `تعذر مطابقة مدينة المستلم مع مناطق Accuratess (city=${payload.city || ''})`,
+        };
       }
 
-      return { ok: true, shipment: json.data?.saveShipment, raw: json };
+      const paymentTypeCode = payload.paymentTypeCode || 'COLC';
+      const collectAmount = Number(payload.price || 0);
+      // Accuratess: CASH/PAID يتطلب price=0؛ COLC يستخدم مبلغ التحصيل
+      const price =
+        paymentTypeCode === 'COLC' || paymentTypeCode === 'CRDT'
+          ? collectAmount
+          : 0;
+
+      const input: Record<string, unknown> = {
+        serviceId,
+        senderName: payload.senderName || payload.sourcePage,
+        senderZoneId: sender.senderZoneId,
+        senderSubzoneId: sender.senderSubzoneId,
+        recipientName: payload.recipientName,
+        recipientPhone: phone,
+        recipientMobile: (payload.recipientMobile || phone).trim(),
+        recipientAddress: [payload.recipientAddress, payload.area, payload.city]
+          .filter(Boolean)
+          .join(' - '),
+        recipientZoneId: recipient.recipientZoneId,
+        recipientSubzoneId: recipient.recipientSubzoneId,
+        price,
+        weight: payload.weight != null ? Number(payload.weight) : 1,
+        piecesCount:
+          payload.piecesCount != null && payload.piecesCount > 0
+            ? Math.floor(payload.piecesCount)
+            : 1,
+        typeCode: this.config.get<string>('ACCURATESS_TYPE_CODE') || 'FDP',
+        priceTypeCode:
+          this.config.get<string>('ACCURATESS_PRICE_TYPE_CODE') || 'EXCLD',
+        paymentTypeCode,
+        openableCode: this.config.get<string>('ACCURATESS_OPENABLE_CODE') || 'Y',
+        notes: [
+          payload.notes,
+          `الراسل=${sourceLabel}`,
+          `reference=${payload.orderNumber}`,
+          payload.deliveryFees != null
+            ? `delivery_fee=${payload.deliveryFees}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        description:
+          payload.description ||
+          `طلب ${payload.orderNumber} — الراسل: ${sourceLabel}`,
+        refNumber: `PAGE:${sourceLabel}|ORD:${payload.orderNumber}`,
+      };
+
+      if (payload.deliveryFees != null) {
+        input.deliveryFees = Number(payload.deliveryFees);
+      }
+
+      const query = `
+        mutation SaveShipment($input: ShipmentInput!) {
+          saveShipment(input: $input) {
+            id
+            code
+            trackingUrl
+            refNumber
+            notes
+            description
+            status { code name }
+          }
+        }
+      `;
+
+      const json = await this.gql<{
+        saveShipment?: {
+          id?: number | string;
+          code?: string;
+          trackingUrl?: string;
+          refNumber?: string;
+          status?: { code?: string; name?: string };
+        };
+      }>(query, { input }, payload.account);
+
+      if (json.errors?.length) {
+        const msg = json.errors
+          .map((e) => {
+            const validation = (e as { extensions?: { validation?: Record<string, string[]> } })
+              .extensions?.validation;
+            if (validation) {
+              const details = Object.entries(validation)
+                .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
+                .join('; ');
+              return details ? `${e.message} (${details})` : e.message;
+            }
+            return e.message;
+          })
+          .join('; ');
+        this.logger.error(`Accuratess saveShipment failed: ${msg}`);
+        return { ok: false, error: msg, raw: json, input };
+      }
+
+      const shipment = json.data?.saveShipment;
+      if (!shipment?.code && !shipment?.id) {
+        return {
+          ok: false,
+          error: 'Accuratess لم يُرجع رقم شحنة',
+          raw: json,
+          input,
+        };
+      }
+
+      this.logger.log(
+        `Accuratess shipment created code=${shipment.code || shipment.id} order=${payload.orderNumber}`,
+      );
+      return { ok: true, shipment, raw: json, input };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Accuratess network error';
       this.logger.error(message);
@@ -449,7 +662,7 @@ export class AccuratessService {
         shipment(code: $code) {
           id
           code
-          status
+          status { code name }
           trackingUrl
           refNumber
           notes
@@ -462,7 +675,7 @@ export class AccuratessService {
         shipment?: {
           id?: string;
           code?: string;
-          status?: string;
+          status?: string | { code?: string; name?: string };
           trackingUrl?: string;
           refNumber?: string;
           notes?: string;
@@ -472,23 +685,27 @@ export class AccuratessService {
       if (json.errors?.length) {
         const alt = `
           query Find($code: String!) {
-            findShipments(input: { code: $code }) {
-              id
-              code
-              status
-              trackingUrl
-              refNumber
-              notes
+            listShipments(first: 1, input: { code: $code }) {
+              data {
+                id
+                code
+                status { code name }
+                trackingUrl
+                refNumber
+                notes
+              }
             }
           }
         `;
         const altJson = await this.gql<{
-          findShipments?: Array<{
-            id?: string;
-            code?: string;
-            status?: string;
-            trackingUrl?: string;
-          }>;
+          listShipments?: {
+            data?: Array<{
+              id?: string;
+              code?: string;
+              status?: string | { code?: string; name?: string };
+              trackingUrl?: string;
+            }>;
+          };
         }>(alt, { code }, account);
         if (altJson.errors?.length) {
           return {
@@ -496,11 +713,34 @@ export class AccuratessService {
             error: json.errors.map((e) => e.message).join('; '),
           };
         }
-        const shipment = altJson.data?.findShipments?.[0];
-        return { ok: true, shipment };
+        const shipment = altJson.data?.listShipments?.data?.[0];
+        return {
+          ok: true,
+          shipment: shipment
+            ? {
+                ...shipment,
+                status:
+                  typeof shipment.status === 'object'
+                    ? shipment.status?.code || shipment.status?.name
+                    : shipment.status,
+              }
+            : undefined,
+        };
       }
 
-      return { ok: true, shipment: json.data?.shipment };
+      const shipment = json.data?.shipment;
+      return {
+        ok: true,
+        shipment: shipment
+          ? {
+              ...shipment,
+              status:
+                typeof shipment.status === 'object'
+                  ? shipment.status?.code || shipment.status?.name
+                  : shipment.status,
+            }
+          : undefined,
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Accuratess network error';
       return { ok: false, error: message };

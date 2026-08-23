@@ -41,14 +41,16 @@ README.md
 ```
 ACCURATESS_ENABLED=true
 ACCURATESS_ENDPOINT=https://mayar.lg.accuratess.com:8443/graphql
-# إما توكن ثابت:
-ACCURATESS_TOKEN=...
-# أو تسجيل دخول (mutation login) مع تخزين التوكن في الذاكرة:
 ACCURATESS_USERNAME=اسلام
 ACCURATESS_PASSWORD=...
+ACCURATESS_TOKEN=...   # أو توكن حساب الصفحة من الواجهة
+ACCURATESS_SERVICE_ID=1
+ACCURATESS_SENDER_ZONE_ID=1
+ACCURATESS_SENDER_SUBZONE_ID=1
 ```
-`AccuratessService` يوفّر `login()` / `request()` / `saveShipment()` / `getShipment()` و`GET /api/v1/delivery/accuratess/status` للتحقق.
-يُرسل الطلب عبر `saveShipment` مع `refNumber` و`notes` متضمّنة `source_page` / اسم الصفحة ورقم الطلب.
+عند إنشاء طلب **خارج طرابلس**، `OrderFulfillmentService.routeOrder` يستدعي `AccuratessService.saveShipment` ويكتب `externalTrackingNumber`.
+`GET /api/v1/delivery/accuratess/status` للتحقق من الاتصال.
+طلبات طرابلس تبقى داخلية ولا تُرسل للمعيار.
 
 ## تتبع الصفحات (Multi-page)
 
