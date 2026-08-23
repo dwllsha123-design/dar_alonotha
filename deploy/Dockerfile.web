@@ -21,7 +21,13 @@ ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 
 FROM nginx:1.27-alpine
+# Railway private DNS name for the Nest backend service (override for Compose)
+ENV API_UPSTREAM=backend.railway.internal:3000
+# Railway sets PORT; Compose maps host 80 → container 80
+ENV PORT=80
+# Only substitute these vars (leave nginx $host / $uri alone)
+ENV NGINX_ENVSUBST_FILTER=^(API_UPSTREAM|PORT)$
 COPY deploy/nginx.main.conf /etc/nginx/nginx.conf
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=store /src/dist /usr/share/nginx/html
 COPY --from=admin /src/dist /usr/share/nginx/html/admin

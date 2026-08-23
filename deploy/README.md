@@ -30,6 +30,14 @@ curl -s http://127.0.0.1/api/v1/health
 - `api` ≈ 512MB
 - `web` (Nginx) ≈ 64MB
 
+### Nginx → API upstream
+
+- Compose يضبط `API_UPSTREAM=api:3000` لخدمة `web`.
+- على Railway اضبط متغير الخدمة (web/nginx):
+  - `API_UPSTREAM=backend.railway.internal:3000`  
+    (استبدل `backend` باسم خدمة الـ Nest الفعلية في المشروع إن اختلف)
+  - تأكد أن Private Networking مفعّل بين خدمتَي web و backend.
+
 بعد أول دخول غيّر كلمة سر المدير واضبط `ALLOW_SEED=false`.
 
 ## بدون Docker — Node + Nginx + PM2

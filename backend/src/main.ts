@@ -89,7 +89,8 @@ async function bootstrap() {
   }
 
   const port = config.get<number>('PORT', 3000);
-  await app.listen(port, '0.0.0.0');
+  // 0.0.0.0 for Docker/VPS; also accept IPv6 for Railway private networking
+  await app.listen(port, '::');
   // eslint-disable-next-line no-console
   console.log(`API running on ${config.get('APP_URL') || `http://localhost:${port}`}/api/v1`);
   if (!isProduction()) {

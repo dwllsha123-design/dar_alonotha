@@ -1,19 +1,27 @@
-# Kept for reference / local nginx -t without templates.
-# Runtime image uses nginx.conf.template → /etc/nginx/templates/default.conf.template
-# with API_UPSTREAM (Compose: api:3000, Railway: backend.railway.internal:3000).
+# Templated by the official nginx image (envsubst) from
+# /etc/nginx/templates/default.conf.template
+#
+# API_UPSTREAM examples:
+#   Docker Compose: api:3000
+#   Railway private network: backend.railway.internal:3000
+#
+# PORT: Railway injects this; local compose defaults to 80.
+
 server {
-    listen 80;
-    listen [::]:80;
+    listen ${PORT};
+    listen [::]:${PORT};
     server_name _;
 
     client_max_body_size 8m;
 
+    # Docker embedded DNS + Railway private-network DNS
     resolver 127.0.0.11 [fd12::10] ipv6=on valid=10s;
 
     root /usr/share/nginx/html;
     index index.html;
 
-    set $api_upstream "api:3000";
+    # Variable forces runtime DNS (avoids "host not found in upstream" at boot)
+    set $api_upstream "${API_UPSTREAM}";
 
     location /api/ {
         proxy_pass http://$api_upstream/api/;
