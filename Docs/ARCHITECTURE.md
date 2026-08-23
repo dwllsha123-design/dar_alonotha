@@ -37,12 +37,17 @@ README.md
 
 الرسوم من Settings: `store.delivery_fee_tripoli` / `store.delivery_fee_external`
 
-عند توفر بيانات الدخول لـ Accuratess:
+عند توفر بيانات الدخول لـ Accuratess (Mayar GraphQL):
 ```
 ACCURATESS_ENABLED=true
 ACCURATESS_ENDPOINT=https://mayar.lg.accuratess.com:8443/graphql
+# إما توكن ثابت:
 ACCURATESS_TOKEN=...
+# أو تسجيل دخول (mutation login) مع تخزين التوكن في الذاكرة:
+ACCURATESS_USERNAME=اسلام
+ACCURATESS_PASSWORD=...
 ```
+`AccuratessService` يوفّر `login()` / `request()` / `saveShipment()` / `getShipment()` و`GET /api/v1/delivery/accuratess/status` للتحقق.
 يُرسل الطلب عبر `saveShipment` مع `refNumber` و`notes` متضمّنة `source_page` / اسم الصفحة ورقم الطلب.
 
 ## تتبع الصفحات (Multi-page)

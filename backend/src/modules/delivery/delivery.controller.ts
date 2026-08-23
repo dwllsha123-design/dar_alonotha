@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
+import { AccuratessService } from './accuratess.service';
 import {
   AssignDeliveryDto,
   BulkSlipsDto,
@@ -20,7 +21,10 @@ import {
 @ApiBearerAuth()
 @Controller('delivery')
 export class DeliveryController {
-  constructor(private readonly deliveryService: DeliveryService) {}
+  constructor(
+    private readonly deliveryService: DeliveryService,
+    private readonly accuratess: AccuratessService,
+  ) {}
 
   @Get('quote')
   @RequirePermissions(PERMISSIONS.ORDERS_VIEW)
@@ -113,6 +117,31 @@ export class DeliveryController {
   @RequirePermissions(PERMISSIONS.ORDERS_VIEW)
   bulkSlips(@CurrentUser() user: AuthUser, @Body() dto: BulkSlipsDto) {
     return this.deliveryService.getShippingSlipsBulk(user, dto);
+  }
+
+  @Get('accuratess/status')
+  @RequirePermissions(PERMISSIONS.DELIVERY_ASSIGN)
+  async accuratessStatus() {
+    const configured = this.accuratess.isConfigured();
+    if (!configured) {
+      return {
+        configured: false,
+        ok: false,
+        error:
+          'عيّن ACCURATESS_ENABLED=true مع ACCURATESS_TOKEN أو ACCURATESS_USERNAME/PASSWORD',
+      };
+    }
+    const ping = await this.accuratess.ping();
+    return {
+      configured: true,
+      endpoint: this.accuratess.endpoint(),
+      authMode: this.accuratess.hasStaticToken()
+        ? 'token'
+        : this.accuratess.hasLoginCredentials()
+          ? 'login'
+          : 'unknown',
+      ...ping,
+    };
   }
 
   @Post('sync-accuratess')

@@ -28,18 +28,54 @@ export type AccuratessShipmentPayload = {
   account?: AccuratessAccountCreds | null;
 };
 
+export type AccuratessGqlResult<T> = {
+  data?: T;
+  errors?: Array<{ message: string; extensions?: { code?: string } }>;
+};
+
+type CachedToken = {
+  token: string;
+  expiresAt: number | null;
+};
+
+const LOGIN_MUTATION = `
+  mutation AccuratessLogin($input: LoginInput!) {
+    login(input: $input) {
+      token
+      expiresAt
+      user {
+        id
+        username
+        active
+      }
+    }
+  }
+`;
+
 @Injectable()
 export class AccuratessService {
   private readonly logger = new Logger(AccuratessService.name);
+  private cachedToken: CachedToken | null = null;
+  private loginInFlight: Promise<string> | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
+  isEnabled() {
+    return this.config.get<string>('ACCURATESS_ENABLED') === 'true';
+  }
+
+  hasStaticToken(account?: AccuratessAccountCreds | null) {
+    return Boolean(account?.apiToken || this.config.get<string>('ACCURATESS_TOKEN'));
+  }
+
+  hasLoginCredentials() {
+    return Boolean(this.username() && this.password());
+  }
+
   isConfigured(account?: AccuratessAccountCreds | null) {
     if (account?.apiToken) return true;
-    return Boolean(
-      this.config.get<string>('ACCURATESS_ENABLED') === 'true' &&
-        this.config.get<string>('ACCURATESS_TOKEN'),
-    );
+    if (!this.isEnabled()) return false;
+    return this.hasStaticToken() || this.hasLoginCredentials();
   }
 
   endpoint(account?: AccuratessAccountCreds | null) {
@@ -50,29 +86,255 @@ export class AccuratessService {
     );
   }
 
-  private resolveToken(account?: AccuratessAccountCreds | null) {
-    return account?.apiToken || this.config.get<string>('ACCURATESS_TOKEN') || '';
+  private username() {
+    return (this.config.get<string>('ACCURATESS_USERNAME') || '').trim();
   }
 
-  private async gql<T>(
-    query: string,
-    variables?: Record<string, unknown>,
-    account?: AccuratessAccountCreds | null,
-  ): Promise<{ data?: T; errors?: Array<{ message: string }> }> {
-    const token = this.resolveToken(account);
-    if (!token) {
-      return { errors: [{ message: 'لا يوجد مفتاح Accuratess' }] };
+  private password() {
+    return this.config.get<string>('ACCURATESS_PASSWORD') || '';
+  }
+
+  private staticToken() {
+    return (this.config.get<string>('ACCURATESS_TOKEN') || '').trim();
+  }
+
+  private isTokenFresh(cached: CachedToken | null): cached is CachedToken {
+    if (!cached?.token) return false;
+    if (!cached.expiresAt) return true;
+    // Refresh 60s before expiry
+    return Date.now() < cached.expiresAt - 60_000;
+  }
+
+  /**
+   * Authenticates via Accuratess `login` mutation and caches the token.
+   * Username for Mayar tenant is typically the short login name (e.g. اسلام),
+   * not the full display name.
+   */
+  async login(force = false): Promise<{
+    ok: boolean;
+    token?: string;
+    expiresAt?: string | null;
+    user?: { id?: number; username?: string; active?: boolean };
+    error?: string;
+  }> {
+    const username = this.username();
+    const password = this.password();
+    if (!username || !password) {
+      return {
+        ok: false,
+        error:
+          'عيّن ACCURATESS_USERNAME و ACCURATESS_PASSWORD لتسجيل الدخول عبر GraphQL',
+      };
     }
-    const res = await fetch(this.endpoint(account), {
+
+    if (!force && this.isTokenFresh(this.cachedToken)) {
+      return { ok: true, token: this.cachedToken.token };
+    }
+
+    if (this.loginInFlight && !force) {
+      try {
+        const token = await this.loginInFlight;
+        return { ok: true, token };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Accuratess login failed';
+        return { ok: false, error: message };
+      }
+    }
+
+    this.loginInFlight = this.performLogin(username, password);
+    try {
+      const token = await this.loginInFlight;
+      return {
+        ok: true,
+        token,
+        expiresAt: this.cachedToken?.expiresAt
+          ? new Date(this.cachedToken.expiresAt).toISOString()
+          : null,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Accuratess login failed';
+      this.logger.error(message);
+      return { ok: false, error: message };
+    } finally {
+      this.loginInFlight = null;
+    }
+  }
+
+  private async performLogin(username: string, password: string): Promise<string> {
+    const res = await fetch(this.endpoint(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ query, variables }),
+      body: JSON.stringify({
+        query: LOGIN_MUTATION,
+        variables: {
+          input: {
+            username,
+            password,
+            rememberMe: true,
+          },
+        },
+      }),
     });
-    return (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
+
+    const json = (await res.json()) as AccuratessGqlResult<{
+      login?: {
+        token: string;
+        expiresAt?: string | null;
+        user?: { id?: number; username?: string; active?: boolean };
+      };
+    }>;
+
+    if (json.errors?.length) {
+      throw new Error(json.errors.map((e) => e.message).join('; '));
+    }
+
+    const token = json.data?.login?.token;
+    if (!token) {
+      throw new Error('Accuratess login returned no token');
+    }
+
+    const expiresRaw = json.data?.login?.expiresAt;
+    this.cachedToken = {
+      token,
+      expiresAt: expiresRaw ? new Date(expiresRaw).getTime() : null,
+    };
+
+    this.logger.log(
+      `Accuratess login ok (user=${json.data?.login?.user?.username ?? username})`,
+    );
+    return token;
+  }
+
+  /**
+   * Resolves a Bearer token: per-account token → static env token → login cache.
+   */
+  async resolveToken(account?: AccuratessAccountCreds | null): Promise<string> {
+    if (account?.apiToken) return account.apiToken;
+
+    const staticTok = this.staticToken();
+    if (staticTok) return staticTok;
+
+    if (this.isTokenFresh(this.cachedToken)) {
+      return this.cachedToken.token;
+    }
+
+    const result = await this.login();
+    if (!result.ok || !result.token) {
+      throw new Error(result.error || 'تعذر الحصول على توكن Accuratess');
+    }
+    return result.token;
+  }
+
+  private looksLikeAuthError(errors?: AccuratessGqlResult<unknown>['errors']) {
+    if (!errors?.length) return false;
+    return errors.some((e) => {
+      const code = (e.extensions?.code || '').toUpperCase();
+      const msg = (e.message || '').toLowerCase();
+      return (
+        code.includes('UNAUTHENTICAT') ||
+        code.includes('UNAUTHORIZED') ||
+        code.includes('FORBIDDEN') ||
+        msg.includes('unauthenticated') ||
+        msg.includes('unauthorized') ||
+        msg.includes('token') ||
+        msg.includes('غير مصرح') ||
+        msg.includes('تسجيل الدخول')
+      );
+    });
+  }
+
+  /**
+   * Reusable GraphQL request helper for subsequent Accuratess API calls.
+   * Attaches Authorization and retries once after re-login on auth failure
+   * (only when using username/password, not a static/account token).
+   */
+  async request<T>(
+    query: string,
+    variables?: Record<string, unknown>,
+    account?: AccuratessAccountCreds | null,
+  ): Promise<AccuratessGqlResult<T>> {
+    if (!this.isConfigured(account)) {
+      return {
+        errors: [
+          {
+            message:
+              'ACCURATESS غير مفعّل — عيّن ACCURATESS_TOKEN أو ACCURATESS_USERNAME/PASSWORD مع ACCURATESS_ENABLED=true',
+          },
+        ],
+      };
+    }
+
+    const canRelogin =
+      !account?.apiToken && !this.staticToken() && this.hasLoginCredentials();
+
+    const run = async (forceRelogin: boolean) => {
+      if (forceRelogin && canRelogin) {
+        this.cachedToken = null;
+        await this.login(true);
+      }
+      const token = await this.resolveToken(account);
+      const res = await fetch(this.endpoint(account), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+      return (await res.json()) as AccuratessGqlResult<T>;
+    };
+
+    try {
+      let json = await run(false);
+      if (canRelogin && this.looksLikeAuthError(json.errors)) {
+        this.logger.warn('Accuratess auth error — re-login and retry once');
+        json = await run(true);
+      }
+      return json;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Accuratess network error';
+      return { errors: [{ message }] };
+    }
+  }
+
+  /** @deprecated Prefer request() — kept for internal callers */
+  private async gql<T>(
+    query: string,
+    variables?: Record<string, unknown>,
+    account?: AccuratessAccountCreds | null,
+  ): Promise<AccuratessGqlResult<T>> {
+    return this.request<T>(query, variables, account);
+  }
+
+  /** Lightweight connectivity check (me query). */
+  async ping(account?: AccuratessAccountCreds | null) {
+    if (!this.isConfigured(account)) {
+      return { ok: false as const, error: 'ACCURATESS غير مفعّل أو بلا بيانات دخول' };
+    }
+
+    // Ensure we can obtain a token first when using password auth
+    if (!account?.apiToken && !this.staticToken()) {
+      const loggedIn = await this.login();
+      if (!loggedIn.ok) return { ok: false as const, error: loggedIn.error };
+    }
+
+    const json = await this.request<{
+      me?: { id: number; username: string; active: boolean };
+    }>(
+      `query AccuratessMe { me { id username active } }`,
+      undefined,
+      account,
+    );
+
+    if (json.errors?.length) {
+      return { ok: false as const, error: json.errors.map((e) => e.message).join('; ') };
+    }
+
+    return { ok: true as const, me: json.data?.me };
   }
 
   /**
@@ -84,7 +346,7 @@ export class AccuratessService {
       return {
         skipped: true,
         reason:
-          'ACCURATESS غير مفعّل أو لا يوجد مفتاح للحساب — عيّن توكن الصفحة أو ACCURATESS_TOKEN',
+          'ACCURATESS غير مفعّل أو لا يوجد مفتاح للحساب — عيّن توكن الصفحة أو ACCURATESS_TOKEN أو اسم المستخدم/كلمة المرور',
       };
     }
 
