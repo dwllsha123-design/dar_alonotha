@@ -4,7 +4,8 @@
 services:
   api:
     build:
-      context: ./backend
+      context: .
+      dockerfile: Dockerfile
     env_file:
       - deploy/.env
     environment:

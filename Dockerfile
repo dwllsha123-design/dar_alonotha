@@ -5,13 +5,13 @@ ENV NODE_OPTIONS=--max-old-space-size=768
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json* ./
+COPY backend/package.json backend/package-lock.json* ./
 RUN npm ci
-COPY prisma ./prisma
+COPY backend/prisma ./prisma
 RUN npx prisma generate
 
-COPY tsconfig.json tsconfig.build.json nest-cli.json ./
-COPY src ./src
+COPY backend/tsconfig.json backend/tsconfig.build.json backend/nest-cli.json ./
+COPY backend/src ./src
 RUN npm run build \
   && npx --yes esbuild@0.25.0 prisma/seed.ts \
     --bundle --platform=node --target=node20 \
