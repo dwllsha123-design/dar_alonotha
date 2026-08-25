@@ -7,7 +7,12 @@ dist
 backend/dist
 backend/uploads
 backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/.env
+backend/.env.local
 **/.env
 mobile
 Docs
 *.md
+*.log
+coverage
