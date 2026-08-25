@@ -1,5 +1,3 @@
-import { copyFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import {
@@ -223,28 +221,24 @@ async function main() {
       city: 'طرابلس',
       isActive: true,
       userId: agent.id,
-      notes: 'حساب تجريبي — كلمة السر Agent@12345',
     },
     update: {
       isActive: true,
       phone: '0920000001',
       city: 'طرابلس',
+      notes: null,
     },
   });
 
-  // شركة خارجية placeholder — API يُربط لاحقاً من المالك
-  const existingCompany = await prisma.deliveryCompany.findFirst({
-    where: { nameAr: 'شركة توصيل خارجية (قيد الربط)' },
+  // إزالة شركة التوصيل التجريبية إن وُجدت
+  await prisma.deliveryCompany.deleteMany({
+    where: {
+      OR: [
+        { nameAr: 'شركة توصيل خارجية (قيد الربط)' },
+        { nameEn: 'External courier (API pending)' },
+      ],
+    },
   });
-  if (!existingCompany) {
-    await prisma.deliveryCompany.create({
-      data: {
-        nameAr: 'شركة توصيل خارجية (قيد الربط)',
-        nameEn: 'External courier (API pending)',
-        isActive: false,
-      },
-    });
-  }
 
   await prisma.warehouse.upsert({
     where: { code: 'MAIN' },
@@ -374,25 +368,27 @@ async function main() {
     });
   }
 
-  await prisma.facebookPage.upsert({
-    where: { pageId: 'page-demo-001' },
-    create: {
-      name: 'دار الأنوثة - الصفحة الرئيسية',
-      pageId: 'page-demo-001',
-      publicCode: 1025,
-      status: 'ACTIVE',
-    },
-    update: { status: 'ACTIVE', publicCode: 1025 },
-  });
+  // لا تُنشأ صفحة فيسبوك تجريبية — تُضاف من لوحة التحكم فقط
+  try {
+    await prisma.facebookPage.deleteMany({
+      where: { pageId: 'page-demo-001' },
+    });
+  } catch {
+    await prisma.facebookPage.updateMany({
+      where: { pageId: 'page-demo-001' },
+      data: { status: 'INACTIVE' },
+    });
+    console.log('Deactivated demo Facebook page (still linked)');
+  }
 
   await prisma.codeSequence.upsert({
     where: { key: 'page_public_code' },
-    create: { key: 'page_public_code', counter: 1025 },
+    create: { key: 'page_public_code', counter: 1000 },
     update: {},
   });
   await prisma.codeSequence.upsert({
     where: { key: 'agent_public_code' },
-    create: { key: 'agent_public_code', counter: 2049 },
+    create: { key: 'agent_public_code', counter: 2000 },
     update: {},
   });
   await prisma.codeSequence.upsert({
@@ -443,141 +439,49 @@ async function main() {
     });
   }
 
-  const lingerie = await prisma.category.findUnique({ where: { slug: 'lingerie' } });
-  const underwear = await prisma.category.findUnique({ where: { slug: 'underwear' } });
-  const robes = await prisma.category.findUnique({ where: { slug: 'robes' } });
-  const wigs = await prisma.category.findUnique({ where: { slug: 'wigs' } });
-  const warehouse = await prisma.warehouse.findUnique({ where: { code: 'MAIN' } });
-
-  const demoProducts = [
-    {
-      sku: 'LIN-001',
-      nameAr: 'طقم لانجري حريري',
-      categoryId: lingerie?.id,
-      retailPrice: 120,
-      basePrice: 150,
-      color: 'أسود',
-      size: 'M',
-      image: '/home/hero-lingerie.jpg',
-    },
-    {
-      sku: 'UND-001',
-      nameAr: 'طقم ملابس داخلية قطنية',
-      categoryId: underwear?.id,
-      retailPrice: 65,
-      basePrice: 65,
-      color: 'بيج',
-      size: 'L',
-      image: '/home/product-faraa.jpg',
-    },
-    {
-      sku: 'ROB-001',
-      nameAr: 'روب منزلي ناعم',
-      categoryId: robes?.id,
-      retailPrice: 180,
-      basePrice: 210,
-      color: 'وردي',
-      size: 'One Size',
-      image: '/home/product-kaftan.jpg',
-    },
-    {
-      sku: 'WIG-001',
-      nameAr: 'باروكة طبيعية مموجة',
-      categoryId: wigs?.id,
-      retailPrice: 350,
-      basePrice: 400,
-      color: 'بني',
-      size: 'متوسط',
-      image: '/home/product-kaftan-34-alt.jpg',
-    },
-  ];
-
-  for (const p of demoProducts) {
-    const existing = await prisma.product.findUnique({
-      where: { sku: p.sku },
-      include: { images: true, variants: true },
+  // إزالة المنتجات التجريبية وصور picsum — الكتالوج يُملأ من لوحة التحكم فقط
+  const demoSkus = ['LIN-001', 'UND-001', 'ROB-001', 'WIG-001'];
+  for (const sku of demoSkus) {
+    const product = await prisma.product.findUnique({
+      where: { sku },
+      include: { variants: { select: { id: true } } },
     });
-
-    if (existing) {
-      // Replace placeholder picsum/random URLs with brand images
-      const primary = existing.images.find((i) => i.isPrimary) || existing.images[0];
-      if (primary) {
-        const isPlaceholder =
-          /picsum\.photos|unsplash\.com|loremflickr|placehold/i.test(primary.url) ||
-          !primary.url;
-        if (isPlaceholder || primary.url !== p.image) {
-          await prisma.productImage.update({
-            where: { id: primary.id },
-            data: { url: p.image, alt: p.nameAr },
-          });
-        }
-      } else {
-        await prisma.productImage.create({
-          data: {
-            productId: existing.id,
-            url: p.image,
-            alt: p.nameAr,
-            isPrimary: true,
-            sortOrder: 0,
-          },
-        });
-      }
-      continue;
-    }
-
-    const created = await prisma.product.create({
-      data: {
-        sku: p.sku,
-        nameAr: p.nameAr,
-        categoryId: p.categoryId,
-        retailPrice: p.retailPrice,
-        basePrice: p.basePrice,
-        status: 'ACTIVE',
-        description: `${p.nameAr} — متوفر لدى دار الأنوثة طرابلس`,
-        images: {
-          create: [
-            {
-              url: p.image,
-              alt: p.nameAr,
-              isPrimary: true,
-              sortOrder: 0,
-            },
-          ],
-        },
-        variants: {
-          create: [
-            {
-              sku: `${p.sku}-V1`,
-              color: p.color,
-              size: p.size,
-              retailPrice: p.retailPrice,
-              price: p.retailPrice,
-              nameAr: `${p.color} / ${p.size}`,
-            },
-          ],
-        },
-      },
-      include: { variants: true },
-    });
-
-    if (warehouse && created.variants[0]) {
-      await prisma.stockItem.upsert({
-        where: {
-          warehouseId_variantId: {
-            warehouseId: warehouse.id,
-            variantId: created.variants[0].id,
-          },
-        },
-        create: {
-          warehouseId: warehouse.id,
-          variantId: created.variants[0].id,
-          branchId: mainBranch.id,
-          quantityOnHand: 15,
-          quantityReserved: 0,
-        },
-        update: { quantityOnHand: 15 },
+    if (!product) continue;
+    const variantIds = product.variants.map((v) => v.id);
+    if (variantIds.length) {
+      await prisma.stockItem.deleteMany({ where: { variantId: { in: variantIds } } });
+      await prisma.inventoryMovement.deleteMany({
+        where: { variantId: { in: variantIds } },
       });
     }
+    try {
+      await prisma.product.delete({ where: { id: product.id } });
+      console.log(`Removed demo product ${sku}`);
+    } catch {
+      await prisma.product.update({
+        where: { id: product.id },
+        data: { status: 'INACTIVE' },
+      });
+      console.log(`Deactivated demo product ${sku} (linked to orders)`);
+    }
+  }
+
+  // أي صورة منتج ما زالت من خدمات تجريبية
+  const placeholderImages = await prisma.productImage.findMany({
+    where: {
+      OR: [
+        { url: { contains: 'picsum.photos' } },
+        { url: { contains: 'unsplash.com' } },
+        { url: { contains: 'loremflickr' } },
+        { url: { contains: 'placehold' } },
+      ],
+    },
+  });
+  if (placeholderImages.length) {
+    await prisma.productImage.deleteMany({
+      where: { id: { in: placeholderImages.map((i) => i.id) } },
+    });
+    console.log(`Removed ${placeholderImages.length} placeholder product images`);
   }
 
   const year = new Date().getFullYear();
@@ -587,36 +491,7 @@ async function main() {
     update: {},
   });
 
-  const heroCount = await prisma.banner.count({ where: { placement: 'HERO' } });
-  if (heroCount === 0) {
-    const uploadsHero = join(process.cwd(), 'uploads', 'banners');
-    mkdirSync(uploadsHero, { recursive: true });
-    const homeDir = join(process.cwd(), '..', 'storefront', 'public', 'home');
-    const heroSlides = [
-      { file: 'hero.jpg', title: 'الرئيسية' },
-      { file: 'coming-soon.jpg', title: 'وصل حديثاً' },
-      { file: 'category.jpg', title: 'التصنيفات' },
-    ];
-    for (let i = 0; i < heroSlides.length; i += 1) {
-      const slide = heroSlides[i];
-      const src = join(homeDir, slide.file);
-      const destName = `hero-slide-${i + 1}.jpg`;
-      let imageUrl = `/home/${slide.file}`;
-      if (existsSync(src)) {
-        copyFileSync(src, join(uploadsHero, destName));
-        imageUrl = `/uploads/banners/${destName}`;
-      }
-      await prisma.banner.create({
-        data: {
-          title: slide.title,
-          imageUrl,
-          placement: 'HERO',
-          sortOrder: i,
-          active: true,
-        },
-      });
-    }
-  }
+  // لا تُنشأ بنرات تجريبية تلقائياً — تُدار من لوحة التسويق
 
   console.log('Seed complete.');
   console.log('Super Admin:', admin.email);

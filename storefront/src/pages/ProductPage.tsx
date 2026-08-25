@@ -5,7 +5,6 @@ import { useCart, useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
 import { storeColorHex } from '../lib/colors';
 
-const FALLBACK_IMG = '/home/product-kaftan.jpg';
 const MAX_QTY = 10;
 
 export function ProductPage() {
@@ -40,7 +39,7 @@ export function ProductPage() {
   );
 
   const galleryImages = useMemo(() => {
-    if (!product) return [{ url: FALLBACK_IMG, alt: '', isPrimary: true as const }];
+    if (!product) return [] as Array<{ url: string; alt?: string | null; isPrimary?: boolean; color?: string | null }>;
     const all = product.images || [];
     const color = variant?.color || null;
     const colorImgs = color ? all.filter((i) => i.color === color) : [];
@@ -50,17 +49,15 @@ export function ProductPage() {
     }
     const generic = all.filter((i) => !i.color);
     if (generic.length) return generic;
-    if (all.length) return all;
-    return [{ url: FALLBACK_IMG, alt: product.nameAr, isPrimary: true }];
+    return all;
   }, [product, variant]);
 
   useEffect(() => {
     setImageIdx(0);
   }, [variant?.id, variant?.color]);
 
-  const images = galleryImages.length
-    ? galleryImages
-    : [{ url: FALLBACK_IMG, alt: product?.nameAr, isPrimary: true }];
+  const images = galleryImages;
+  const mainImage = images[imageIdx]?.url || images[0]?.url || '';
 
   const colors = [...new Set((product?.variants || []).map((v) => v.color).filter(Boolean))];
   const sizes = [...new Set((product?.variants || []).map((v) => v.size).filter(Boolean))];
@@ -86,7 +83,7 @@ export function ProductPage() {
       variantId: variant.id,
       productId: product.id,
       nameAr: product.nameAr,
-      image: images[imageIdx]?.url || images[0]?.url,
+      image: mainImage || undefined,
       color: variant.color,
       size: variant.size,
       quantity: qty,
@@ -115,13 +112,21 @@ export function ProductPage() {
       <div className="product-layout">
         <div className="gallery">
           <div className={`gallery-main${unavailable ? ' is-unavailable' : ''}`}>
-            <img
-              src={images[imageIdx]?.url || FALLBACK_IMG}
-              alt={product.nameAr}
-              width={1200}
-              height={1500}
-              decoding="async"
-            />
+            {mainImage ? (
+              <img
+                src={mainImage}
+                alt={product.nameAr}
+                width={1200}
+                height={1500}
+                decoding="async"
+              />
+            ) : (
+              <div className="thumb-ph" aria-hidden style={{ width: '100%', minHeight: 360 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 48 }}>
+                  checkroom
+                </span>
+              </div>
+            )}
             {unavailable ? (
               <div className="unavailable-mark" aria-label="غير متوفر">
                 <span>غير متوفر</span>
