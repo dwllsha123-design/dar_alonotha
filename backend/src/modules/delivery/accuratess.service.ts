@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeliveryStatus } from '@prisma/client';
+import {
+  extractAccuratessTracking,
+  type AccuratessShipmentResult,
+} from './accuratess-tracking';
 
 export type AccuratessAccountCreds = {
   apiToken: string;
@@ -586,6 +590,9 @@ export class AccuratessService {
         input.deliveryFees = Number(payload.deliveryFees);
       }
 
+      // Keep selection set scalar-only. Requesting `status { code name }` breaks
+      // when Accuratess returns status as a string — mutation may commit remotely
+      // while GraphQL returns errors and null data (no code saved locally).
       const query = `
         mutation SaveShipment($input: ShipmentInput!) {
           saveShipment(input: $input) {
@@ -595,26 +602,39 @@ export class AccuratessService {
             refNumber
             notes
             description
-            status { code name }
           }
         }
       `;
 
       const json = await this.gql<{
-        saveShipment?: {
-          id?: number | string;
-          code?: string;
-          trackingUrl?: string;
-          refNumber?: string;
-          status?: { code?: string; name?: string };
-        };
+        saveShipment?: AccuratessShipmentResult | null;
       }>(query, { input }, payload.account);
 
       if (json.errors?.length) {
+        // Mutation may have succeeded server-side; still try to salvage a code.
+        const salvaged = extractAccuratessTracking(json.data?.saveShipment, json);
+        if (salvaged.code) {
+          this.logger.warn(
+            `Accuratess saveShipment returned GraphQL errors but code=${salvaged.code} was recovered`,
+          );
+          return {
+            ok: true,
+            shipment: {
+              id: salvaged.id || undefined,
+              code: salvaged.code,
+              trackingUrl: salvaged.trackingUrl || undefined,
+            },
+            raw: json,
+            input,
+            warnings: json.errors.map((e) => e.message),
+          };
+        }
+
         const msg = json.errors
           .map((e) => {
-            const validation = (e as { extensions?: { validation?: Record<string, string[]> } })
-              .extensions?.validation;
+            const validation = (
+              e as { extensions?: { validation?: Record<string, string[]> } }
+            ).extensions?.validation;
             if (validation) {
               const details = Object.entries(validation)
                 .map(([k, v]) => `${k}: ${(v || []).join(', ')}`)
@@ -628,20 +648,28 @@ export class AccuratessService {
         return { ok: false, error: msg, raw: json, input };
       }
 
-      const shipment = json.data?.saveShipment;
-      if (!shipment?.code && !shipment?.id) {
+      const shipment = json.data?.saveShipment || null;
+      const extracted = extractAccuratessTracking(shipment, json);
+      if (!extracted.code) {
         return {
           ok: false,
-          error: 'Accuratess لم يُرجع رقم شحنة',
+          error: 'Accuratess لم يُرجع رقم شحنة (code/id)',
           raw: json,
           input,
         };
       }
 
+      const normalized = {
+        id: extracted.id || shipment?.id,
+        code: extracted.code,
+        trackingUrl: extracted.trackingUrl || shipment?.trackingUrl || undefined,
+        refNumber: shipment?.refNumber,
+      };
+
       this.logger.log(
-        `Accuratess shipment created code=${shipment.code || shipment.id} order=${payload.orderNumber}`,
+        `Accuratess shipment created code=${normalized.code} order=${payload.orderNumber}`,
       );
-      return { ok: true, shipment, raw: json, input };
+      return { ok: true, shipment: normalized, raw: json, input };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Accuratess network error';
       this.logger.error(message);

@@ -8,6 +8,8 @@ type Slip = {
   trackingNumber?: string | null;
   trackingUrl?: string | null;
   accuratessCode?: string | null;
+  pagePublicCode?: number | null;
+  pageCode?: number | null;
   fee: string | number;
   type: string;
   status: string;
@@ -155,6 +157,14 @@ export function DeliveryPrintPage() {
               ) : (
                 <div className="missing">لا يوجد رقم شحنة بعد</div>
               )}
+              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 700 }}>
+                رمز الصفحة:{' '}
+                {s.pagePublicCode ??
+                  s.pageCode ??
+                  s.order.facebookPage?.publicCode ??
+                  s.order.pagePublicCode ??
+                  '—'}
+              </div>
               {trackUrl ? (
                 <div style={{ marginTop: 8, fontSize: 12 }}>
                   رابط التتبع: {trackUrl}

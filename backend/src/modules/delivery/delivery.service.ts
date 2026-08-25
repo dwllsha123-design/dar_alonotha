@@ -22,6 +22,7 @@ import {
 } from '../../common/delivery/delivery-zones';
 import { StoreService } from '../store/store.service';
 import { AccuratessService } from './accuratess.service';
+import { extractAccuratessTracking } from './accuratess-tracking';
 import { CentralInventoryService } from '../inventory/services/central-inventory.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -406,37 +407,67 @@ export class DeliveryService {
       const result = shipped as {
         ok?: boolean;
         skipped?: boolean;
-        shipment?: { code?: string; trackingUrl?: string; id?: string };
+        shipment?: {
+          code?: string | number;
+          trackingUrl?: string;
+          id?: string | number;
+        };
         error?: string;
         reason?: string;
+        raw?: unknown;
       };
 
-      if (result.ok && result.shipment) {
-        status = 'ASSIGNED';
-        trackingNumber = String(result.shipment.code || result.shipment.id || '');
-        externalRef = String(result.shipment.id || result.shipment.code || '');
-        trackingUrl = result.shipment.trackingUrl
-          ? String(result.shipment.trackingUrl)
-          : undefined;
-        notes = [
-          notes,
-          `Accuratess code=${result.shipment.code || ''}`,
-          trackingUrl ? `track=${trackingUrl}` : '',
-          `source_page=${senderName}`,
-        ]
-          .filter(Boolean)
-          .join(' | ');
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            externalTrackingNumber: trackingNumber,
-            shippingLabelUrl: trackingUrl,
-            fulfillmentError: null,
-            externalResponsePayload: JSON.stringify(shipped),
-            fulfillmentType: 'EXTERNAL',
-            deliveryType: 'EXTERNAL',
-          },
-        });
+      if (result.ok || result.shipment || result.raw) {
+        const extracted = extractAccuratessTracking(
+          result.shipment as never,
+          result.raw ?? shipped,
+        );
+        if (extracted.code) {
+          status = 'ASSIGNED';
+          trackingNumber = extracted.code;
+          externalRef = extracted.id || extracted.code;
+          trackingUrl = extracted.trackingUrl || undefined;
+          notes = [
+            notes,
+            `Accuratess code=${extracted.code}`,
+            trackingUrl ? `track=${trackingUrl}` : '',
+            `source_page=${senderName}`,
+            order.pagePublicCode != null ? `pageCode=${order.pagePublicCode}` : '',
+          ]
+            .filter(Boolean)
+            .join(' | ');
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              externalTrackingNumber: trackingNumber,
+              shippingLabelUrl: trackingUrl,
+              pagePublicCode:
+                order.pagePublicCode ?? order.facebookPage?.publicCode ?? undefined,
+              fulfillmentError: null,
+              externalResponsePayload: JSON.stringify(shipped),
+              fulfillmentType: 'EXTERNAL',
+              deliveryType: 'EXTERNAL',
+            },
+          });
+        } else if (result.skipped) {
+          notes = `${notes || ''} | ${result.reason}`;
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              fulfillmentError: String(result.reason || 'skipped'),
+              externalResponsePayload: JSON.stringify(shipped),
+            },
+          });
+        } else if (result.error) {
+          notes = `${notes || ''} | Accuratess error: ${result.error}`;
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              fulfillmentError: String(result.error),
+              externalResponsePayload: JSON.stringify(shipped),
+            },
+          });
+        }
       } else if (result.skipped) {
         notes = `${notes || ''} | ${result.reason}`;
         await this.prisma.order.update({
@@ -703,13 +734,25 @@ export class DeliveryService {
     this.assertWaybillPrintable(delivery.order);
     const senderName = await this.resolveSenderName(delivery.order);
     const accuratessCode = this.resolveAccuratessCode(delivery, delivery.order);
+    const pagePublicCode =
+      delivery.order.pagePublicCode ??
+      delivery.order.facebookPage?.publicCode ??
+      null;
     return {
       ...delivery,
       trackingNumber: accuratessCode || delivery.trackingNumber,
       accuratessCode,
+      pagePublicCode,
+      pageCode: pagePublicCode,
       printTitle: 'بوليصة شحن — دار الأنوثة',
       senderName,
       sourcePage: senderName,
+      order: {
+        ...delivery.order,
+        pagePublicCode,
+        externalTrackingNumber:
+          delivery.order.externalTrackingNumber || accuratessCode,
+      },
     };
   }
 
@@ -755,12 +798,16 @@ export class DeliveryService {
     }
     const senderName = await this.resolveSenderName(order);
     const accuratessCode = this.resolveAccuratessCode(null, order);
+    const pagePublicCode =
+      order.pagePublicCode ?? order.facebookPage?.publicCode ?? null;
     return {
       id: order.id,
       shippingSlipNo: order.orderNumber,
       trackingNumber: accuratessCode,
       trackingUrl: order.shippingLabelUrl || null,
       accuratessCode,
+      pagePublicCode,
+      pageCode: pagePublicCode,
       fee: order.deliveryFee,
       type: order.deliveryType,
       status: order.status,
@@ -771,7 +818,11 @@ export class DeliveryService {
         : null,
       company: null,
       printTitle: 'بوليصة شحن — دار الأنوثة',
-      order,
+      order: {
+        ...order,
+        pagePublicCode,
+        externalTrackingNumber: order.externalTrackingNumber || accuratessCode,
+      },
     };
   }
 

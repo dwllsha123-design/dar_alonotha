@@ -3,6 +3,7 @@ import { FulfillmentType, LocalOrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findDeliveryCity } from '../../common/delivery/delivery-zones';
 import { AccuratessService } from './accuratess.service';
+import { extractAccuratessTracking } from './accuratess-tracking';
 
 @Injectable()
 export class OrderFulfillmentService {
@@ -137,6 +138,9 @@ export class OrderFulfillmentService {
     let payloadJson: string | null = null;
     let fulfillmentError: string | null = null;
 
+    const pagePublicCode =
+      order.pagePublicCode ?? order.facebookPage?.publicCode ?? null;
+
     try {
       const shipped = await this.accuratess.saveShipment({
         orderNumber: order.orderNumber,
@@ -152,7 +156,7 @@ export class OrderFulfillmentService {
         piecesCount: piecesCount > 0 ? piecesCount : 1,
         paymentTypeCode: 'COLC',
         sourcePage: senderName,
-        sourcePageCode: order.pagePublicCode,
+        sourcePageCode: pagePublicCode,
         account: account
           ? {
               apiToken: account.apiToken,
@@ -171,89 +175,138 @@ export class OrderFulfillmentService {
         this.logger.warn(
           `Accuratess skipped for ${order.orderNumber}: ${fulfillmentError}`,
         );
-      } else if ('ok' in shipped && shipped.ok && shipped.shipment) {
-        const s = shipped.shipment as {
-          code?: string;
-          id?: string | number;
-          trackingUrl?: string;
-        };
-        tracking = String(s.code || s.id || '') || null;
-        labelUrl = s.trackingUrl ? String(s.trackingUrl) : null;
-        this.logger.log(
-          `Accuratess OK ${order.orderNumber} tracking=${tracking}`,
+      } else if ('ok' in shipped && shipped.ok) {
+        const extracted = extractAccuratessTracking(
+          shipped.shipment as never,
+          (shipped as { raw?: unknown }).raw ?? shipped,
         );
+        tracking = extracted.code;
+        labelUrl = extracted.trackingUrl;
+        if (!tracking) {
+          fulfillmentError = 'Accuratess نجح لكن بدون رقم شحنة في الرد';
+          this.logger.error(
+            `Accuratess empty tracking for ${order.orderNumber}: ${payloadJson}`,
+          );
+        } else {
+          this.logger.log(
+            `Accuratess OK ${order.orderNumber} tracking=${tracking} pageCode=${pagePublicCode ?? '—'}`,
+          );
+        }
       } else if ('error' in shipped && shipped.error) {
-        fulfillmentError = String(shipped.error);
-        this.logger.error(
-          `Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
+        // Still try to recover a code from raw error payloads
+        const extracted = extractAccuratessTracking(
+          null,
+          (shipped as { raw?: unknown }).raw ?? shipped,
         );
+        if (extracted.code) {
+          tracking = extracted.code;
+          labelUrl = extracted.trackingUrl;
+          this.logger.warn(
+            `Accuratess reported error but recovered code=${tracking} for ${order.orderNumber}`,
+          );
+        } else {
+          fulfillmentError = String(shipped.error);
+          this.logger.error(
+            `Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
+          );
+        }
       }
     } catch (err) {
       fulfillmentError =
         err instanceof Error ? err.message : 'فشل الاتصال بشركة المعيار';
-      this.logger.error(`Fulfillment Accuratess error for ${order.orderNumber}: ${fulfillmentError}`);
+      this.logger.error(
+        `Fulfillment Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
+      );
       payloadJson = JSON.stringify({ error: fulfillmentError });
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        fulfillmentType: 'EXTERNAL',
-        deliveryType: 'EXTERNAL',
-        localStatus: null,
-        pageSource,
-        externalTrackingNumber: tracking || order.externalTrackingNumber,
-        shippingLabelUrl: labelUrl || order.shippingLabelUrl,
-        externalResponsePayload: payloadJson,
-        fulfillmentError,
-      },
-      include: { facebookPage: true, courier: true },
-    });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const orderRow = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          fulfillmentType: 'EXTERNAL',
+          deliveryType: 'EXTERNAL',
+          localStatus: null,
+          pageSource,
+          pagePublicCode: pagePublicCode ?? undefined,
+          // Always write when we have a code — never leave stale null after a success
+          ...(tracking
+            ? {
+                externalTrackingNumber: tracking,
+                shippingLabelUrl: labelUrl || order.shippingLabelUrl,
+                fulfillmentError: null,
+              }
+            : {
+                externalTrackingNumber: order.externalTrackingNumber,
+                shippingLabelUrl: labelUrl || order.shippingLabelUrl,
+                fulfillmentError,
+              }),
+          externalResponsePayload: payloadJson,
+        },
+        include: { facebookPage: true, courier: true },
+      });
 
-    // إنشاء/تحديث سجل Delivery للتوافق مع لوحة التوصيل
-    const existing = await this.prisma.delivery.findFirst({
-      where: { orderId },
-      orderBy: { createdAt: 'desc' },
+      const existing = await tx.delivery.findFirst({
+        where: { orderId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const deliveryNotes = fulfillmentError
+        ? `يحتاج إرسال يدوي: ${fulfillmentError}`
+        : [
+            `Accuratess page=${senderName}`,
+            pagePublicCode != null ? `pageCode=${pagePublicCode}` : '',
+            tracking ? `code=${tracking}` : '',
+          ]
+            .filter(Boolean)
+            .join(' | ');
+
+      if (!existing) {
+        const year = new Date().getFullYear();
+        const count = await tx.delivery.count({
+          where: { shippingSlipNo: { startsWith: `SLIP-${year}-` } },
+        });
+        const shippingSlipNo = `SLIP-${year}-${String(count + 1).padStart(6, '0')}`;
+        await tx.delivery.create({
+          data: {
+            orderId,
+            type: 'EXTERNAL',
+            status: tracking ? 'ASSIGNED' : 'PENDING',
+            fee: order.deliveryFee,
+            shippingSlipNo,
+            trackingNumber: tracking || undefined,
+            trackingUrl: labelUrl || undefined,
+            externalRef: tracking || undefined,
+            notes: deliveryNotes,
+          },
+        });
+      } else {
+        await tx.delivery.update({
+          where: { id: existing.id },
+          data: {
+            type: 'EXTERNAL',
+            status: tracking ? 'ASSIGNED' : existing.status,
+            ...(tracking
+              ? {
+                  trackingNumber: tracking,
+                  trackingUrl: labelUrl || existing.trackingUrl,
+                  externalRef: tracking,
+                }
+              : {}),
+            notes: deliveryNotes,
+          },
+        });
+      }
+
+      return orderRow;
     });
-    if (!existing) {
-      const year = new Date().getFullYear();
-      const count = await this.prisma.delivery.count({
-        where: { shippingSlipNo: { startsWith: `SLIP-${year}-` } },
-      });
-      const shippingSlipNo = `SLIP-${year}-${String(count + 1).padStart(6, '0')}`;
-      await this.prisma.delivery.create({
-        data: {
-          orderId,
-          type: 'EXTERNAL',
-          status: tracking ? 'ASSIGNED' : 'PENDING',
-          fee: order.deliveryFee,
-          shippingSlipNo,
-          trackingNumber: tracking || undefined,
-          trackingUrl: labelUrl || undefined,
-          externalRef: tracking || undefined,
-          notes: fulfillmentError
-            ? `يحتاج إرسال يدوي: ${fulfillmentError}`
-            : `Accuratess page=${senderName}`,
-        },
-      });
-    } else if (tracking) {
-      await this.prisma.delivery.update({
-        where: { id: existing.id },
-        data: {
-          type: 'EXTERNAL',
-          status: 'ASSIGNED',
-          trackingNumber: tracking,
-          trackingUrl: labelUrl || existing.trackingUrl,
-          externalRef: tracking,
-        },
-      });
-    }
 
     return {
       fulfillmentType: 'EXTERNAL' as const,
       order: updated,
       externalTrackingNumber: updated.externalTrackingNumber,
       accuratessCode: updated.externalTrackingNumber,
+      pagePublicCode: updated.pagePublicCode,
       accountUsed: account
         ? { id: account.id, label: account.label, pageIdentifier: account.pageIdentifier }
         : null,
