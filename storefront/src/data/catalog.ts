@@ -20,8 +20,5 @@ export const FALLBACK_CATEGORIES: StoreCategory[] = [
 ];
 
 export function categoryImage(slug: string) {
-  return (
-    CATEGORY_IMAGES[slug] ||
-    '/home/category.jpg'
-  );
+  return CATEGORY_IMAGES[slug] || '/home/category.jpg';
 }

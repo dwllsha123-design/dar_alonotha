@@ -5,7 +5,7 @@ import { useCart, useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
 import { storeColorHex } from '../lib/colors';
 
-const FALLBACK_IMG = 'https://picsum.photos/seed/p/1200/1500';
+const FALLBACK_IMG = '/home/product-kaftan.jpg';
 const MAX_QTY = 10;
 
 export function ProductPage() {

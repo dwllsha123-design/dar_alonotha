@@ -458,6 +458,7 @@ async function main() {
       basePrice: 150,
       color: 'أسود',
       size: 'M',
+      image: '/home/hero-lingerie.jpg',
     },
     {
       sku: 'UND-001',
@@ -467,6 +468,7 @@ async function main() {
       basePrice: 65,
       color: 'بيج',
       size: 'L',
+      image: '/home/product-faraa.jpg',
     },
     {
       sku: 'ROB-001',
@@ -476,6 +478,7 @@ async function main() {
       basePrice: 210,
       color: 'وردي',
       size: 'One Size',
+      image: '/home/product-kaftan.jpg',
     },
     {
       sku: 'WIG-001',
@@ -485,12 +488,43 @@ async function main() {
       basePrice: 400,
       color: 'بني',
       size: 'متوسط',
+      image: '/home/product-kaftan-34-alt.jpg',
     },
   ];
 
   for (const p of demoProducts) {
-    const existing = await prisma.product.findUnique({ where: { sku: p.sku } });
-    if (existing) continue;
+    const existing = await prisma.product.findUnique({
+      where: { sku: p.sku },
+      include: { images: true, variants: true },
+    });
+
+    if (existing) {
+      // Replace placeholder picsum/random URLs with brand images
+      const primary = existing.images.find((i) => i.isPrimary) || existing.images[0];
+      if (primary) {
+        const isPlaceholder =
+          /picsum\.photos|unsplash\.com|loremflickr|placehold/i.test(primary.url) ||
+          !primary.url;
+        if (isPlaceholder || primary.url !== p.image) {
+          await prisma.productImage.update({
+            where: { id: primary.id },
+            data: { url: p.image, alt: p.nameAr },
+          });
+        }
+      } else {
+        await prisma.productImage.create({
+          data: {
+            productId: existing.id,
+            url: p.image,
+            alt: p.nameAr,
+            isPrimary: true,
+            sortOrder: 0,
+          },
+        });
+      }
+      continue;
+    }
+
     const created = await prisma.product.create({
       data: {
         sku: p.sku,
@@ -503,7 +537,7 @@ async function main() {
         images: {
           create: [
             {
-              url: `https://picsum.photos/seed/${p.sku}/1200/1500`,
+              url: p.image,
               alt: p.nameAr,
               isPrimary: true,
               sortOrder: 0,
