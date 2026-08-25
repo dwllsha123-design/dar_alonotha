@@ -12,12 +12,17 @@ RUN npx prisma generate
 
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
+COPY scripts ./scripts
 RUN npm run build \
   && npx --yes esbuild@0.25.0 prisma/seed.ts \
     --bundle --platform=node --target=node20 \
     --outfile=dist/seed.js \
     --external:@prisma/client \
-    --external:bcrypt
+    --external:bcrypt \
+  && npx --yes esbuild@0.25.0 scripts/purge-demo.ts \
+    --bundle --platform=node --target=node20 \
+    --outfile=dist/purge-demo.js \
+    --external:@prisma/client
 
 # Keep prisma CLI for migrate/generate in the runtime image
 RUN npm prune --omit=dev \
