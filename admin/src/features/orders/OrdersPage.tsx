@@ -16,10 +16,26 @@ type Order = {
   deliveryType?: string;
   fulfillmentType?: string | null;
   courierId?: string | null;
+  externalTrackingNumber?: string | null;
+  shippingLabelUrl?: string | null;
   courier?: { id: string; name: string } | null;
   facebookPage?: { id: string; name: string; publicCode?: number } | null;
-  deliveries?: Array<{ id: string; shippingSlipNo?: string | null; status: string; agentId?: string | null }>;
+  deliveries?: Array<{
+    id: string;
+    shippingSlipNo?: string | null;
+    status: string;
+    agentId?: string | null;
+    trackingNumber?: string | null;
+    trackingUrl?: string | null;
+    externalRef?: string | null;
+  }>;
 };
+
+function orderAccuratessCode(o: Order): string | null {
+  const d = o.deliveries?.[0];
+  const raw = d?.trackingNumber || d?.externalRef || o.externalTrackingNumber;
+  return raw ? String(raw).trim() : null;
+}
 
 type Page = { id: string; name: string; publicCode: number };
 
@@ -73,7 +89,14 @@ export function OrdersPage() {
     const term = q.trim().toLowerCase();
     if (!term) return orders;
     return orders.filter((o) =>
-      [o.orderNumber, o.shippingName, o.shippingPhone, o.city, o.facebookPage?.name]
+      [
+        o.orderNumber,
+        o.shippingName,
+        o.shippingPhone,
+        o.city,
+        o.facebookPage?.name,
+        orderAccuratessCode(o),
+      ]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term)),
     );
@@ -163,7 +186,7 @@ export function OrdersPage() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث برقم الطلب أو العميل..."
+              placeholder="بحث برقم الطلب أو العميل أو Accuratess..."
               style={{ minWidth: 220, height: 32, padding: '0 12px' }}
             />
           </div>
@@ -174,6 +197,7 @@ export function OrdersPage() {
             <thead>
               <tr>
                 <th>رقم الطلب</th>
+                <th>تتبع Accuratess</th>
                 <th>الصفحة</th>
                 <th>المصدر</th>
                 <th>العميل</th>
@@ -193,6 +217,31 @@ export function OrdersPage() {
                 >
                   <td style={{ fontWeight: 600, color: 'var(--primary-container)' }}>
                     {o.orderNumber}
+                  </td>
+                  <td>
+                    {(() => {
+                      const code = orderAccuratessCode(o);
+                      const url =
+                        o.deliveries?.[0]?.trackingUrl || o.shippingLabelUrl || null;
+                      return (
+                        <div className="tracking-code">
+                          <span className="tracking-code-label">رقم الشحنة</span>
+                          <span className={`tracking-code-value${code ? '' : ' empty'}`}>
+                            {code || '—'}
+                          </span>
+                          {url ? (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ fontSize: 12, marginTop: 2 }}
+                            >
+                              فتح التتبع
+                            </a>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td>
                     {o.facebookPage?.name || '—'}
@@ -254,7 +303,7 @@ export function OrdersPage() {
               ))}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={9} className="empty">
+                  <td colSpan={10} className="empty">
                     لا توجد طلبات مطابقة
                   </td>
                 </tr>

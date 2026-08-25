@@ -97,7 +97,15 @@ export class OrdersService {
         facebookPage: true,
         items: true,
         deliveries: {
-          select: { id: true, shippingSlipNo: true, status: true, agentId: true },
+          select: {
+            id: true,
+            shippingSlipNo: true,
+            status: true,
+            agentId: true,
+            trackingNumber: true,
+            trackingUrl: true,
+            externalRef: true,
+          },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },

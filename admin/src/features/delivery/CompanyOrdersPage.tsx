@@ -129,14 +129,19 @@ export function CompanyOrdersPage() {
                     <div className="muted">{d.order.shippingPhone}</div>
                   </td>
                   <td>
-                    {d.trackingNumber || '—'}
-                    {d.trackingUrl ? (
-                      <div>
-                        <a href={d.trackingUrl} target="_blank" rel="noreferrer">
-                          رابط
+                    <div className="tracking-code">
+                      <span className="tracking-code-label">رقم الشحنة</span>
+                      <span
+                        className={`tracking-code-value${d.trackingNumber ? '' : ' empty'}`}
+                      >
+                        {d.trackingNumber || '—'}
+                      </span>
+                      {d.trackingUrl ? (
+                        <a href={d.trackingUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                          رابط التتبع
                         </a>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </td>
                   <td>
                     {d.lastSyncedAt ? new Date(d.lastSyncedAt).toLocaleString('ar-LY') : '—'}

@@ -181,7 +181,7 @@ export class DeliveryService {
     facebookPageId?: string,
   ) {
     const scope = await this.orderScope(user);
-    return this.prisma.delivery.findMany({
+    const rows = await this.prisma.delivery.findMany({
       where: {
         ...(status ? { status: status as never } : {}),
         ...(type ? { type: type as never } : {}),
@@ -207,6 +207,8 @@ export class DeliveryService {
             pagePublicCode: true,
             fulfillmentType: true,
             localStatus: true,
+            externalTrackingNumber: true,
+            shippingLabelUrl: true,
             facebookPage: { select: orderPageSelect },
             courier: { select: { id: true, name: true, phone: true } },
           },
@@ -216,6 +218,15 @@ export class DeliveryService {
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
+    });
+
+    return rows.map((d) => {
+      const accuratessCode = this.resolveAccuratessCode(d, d.order);
+      return {
+        ...d,
+        trackingNumber: accuratessCode || d.trackingNumber,
+        accuratessCode,
+      };
     });
   }
 
@@ -691,12 +702,32 @@ export class DeliveryService {
     if (!delivery) throw new NotFoundException('بوليصة الشحن غير موجودة');
     this.assertWaybillPrintable(delivery.order);
     const senderName = await this.resolveSenderName(delivery.order);
+    const accuratessCode = this.resolveAccuratessCode(delivery, delivery.order);
     return {
       ...delivery,
+      trackingNumber: accuratessCode || delivery.trackingNumber,
+      accuratessCode,
       printTitle: 'بوليصة شحن — دار الأنوثة',
       senderName,
       sourcePage: senderName,
     };
+  }
+
+  /** رقم شحنة Accuratess الظاهر على البوليصة وتفاصيل الطلب */
+  private resolveAccuratessCode(
+    delivery: {
+      trackingNumber?: string | null;
+      externalRef?: string | null;
+    } | null,
+    order: { externalTrackingNumber?: string | null },
+  ): string | null {
+    const raw =
+      delivery?.trackingNumber ||
+      delivery?.externalRef ||
+      order.externalTrackingNumber ||
+      null;
+    const code = raw ? String(raw).trim() : '';
+    return code || null;
   }
 
   async slipFromOrder(orderId: string) {
@@ -723,11 +754,13 @@ export class DeliveryService {
       return this.getShippingSlip(order.deliveries[0].id);
     }
     const senderName = await this.resolveSenderName(order);
+    const accuratessCode = this.resolveAccuratessCode(null, order);
     return {
       id: order.id,
       shippingSlipNo: order.orderNumber,
-      trackingNumber: null,
-      trackingUrl: null,
+      trackingNumber: accuratessCode,
+      trackingUrl: order.shippingLabelUrl || null,
+      accuratessCode,
       fee: order.deliveryFee,
       type: order.deliveryType,
       status: order.status,

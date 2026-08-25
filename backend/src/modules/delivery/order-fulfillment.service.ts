@@ -252,6 +252,8 @@ export class OrderFulfillmentService {
     return {
       fulfillmentType: 'EXTERNAL' as const,
       order: updated,
+      externalTrackingNumber: updated.externalTrackingNumber,
+      accuratessCode: updated.externalTrackingNumber,
       accountUsed: account
         ? { id: account.id, label: account.label, pageIdentifier: account.pageIdentifier }
         : null,

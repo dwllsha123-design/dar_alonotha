@@ -9,6 +9,8 @@ type Delivery = {
   shippingSlipNo?: string;
   trackingNumber?: string | null;
   trackingUrl?: string | null;
+  externalRef?: string | null;
+  accuratessCode?: string | null;
   lastSyncedAt?: string | null;
   fee: string | number;
   notes?: string;
@@ -25,6 +27,7 @@ type Delivery = {
     pagePublicCode?: number | null;
     fulfillmentType?: string | null;
     localStatus?: string | null;
+    externalTrackingNumber?: string | null;
     facebookPage?: { id: string; name: string; publicCode: number } | null;
     courier?: { id: string; name: string; phone?: string | null } | null;
   };
@@ -238,17 +241,35 @@ export function DeliveryPage() {
     setError('');
     setMsg('');
     try {
-      const res = await api<{ fulfillmentType: string; error?: string | null }>(
-        `/orders/${orderId}/fulfill`,
-        { method: 'POST', body: '{}' },
-      );
-      setMsg(
-        res.fulfillmentType === 'INTERNAL'
-          ? 'تم توجيه الطلب للتوصيل الداخلي'
-          : res.error
-            ? `شحن خارجي مع تنبيه: ${res.error}`
+      const res = await api<{
+        fulfillmentType: string;
+        error?: string | null;
+        externalTrackingNumber?: string | null;
+        accuratessCode?: string | null;
+        order?: { externalTrackingNumber?: string | null };
+        fulfillmentError?: string | null;
+      }>(`/orders/${orderId}/fulfill`, { method: 'POST', body: '{}' });
+      const code = (
+        res.externalTrackingNumber ||
+        res.accuratessCode ||
+        res.order?.externalTrackingNumber ||
+        ''
+      ).trim();
+      if (res.fulfillmentType === 'INTERNAL') {
+        setMsg('تم توجيه الطلب للتوصيل الداخلي');
+      } else if (res.error || res.fulfillmentError) {
+        setMsg(
+          `شحن خارجي مع تنبيه: ${res.error || res.fulfillmentError}${
+            code ? ` — رقم Accuratess: ${code}` : ''
+          }`,
+        );
+      } else {
+        setMsg(
+          code
+            ? `تم إرسال الطلب لشركة المعيار — رقم الشحنة: ${code}`
             : 'تم إرسال الطلب لشركة المعيار بحساب الصفحة',
-      );
+        );
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل التوجيه');
@@ -512,14 +533,27 @@ export function DeliveryPage() {
                   </div>
                 </td>
                 <td>
-                  {d.trackingNumber || '—'}
-                  {d.trackingUrl ? (
-                    <div>
-                      <a href={d.trackingUrl} target="_blank" rel="noreferrer">
-                        رابط التتبع
-                      </a>
-                    </div>
-                  ) : null}
+                  {(() => {
+                    const code =
+                      d.accuratessCode ||
+                      d.trackingNumber ||
+                      d.externalRef ||
+                      d.order.externalTrackingNumber ||
+                      null;
+                    return (
+                      <div className="tracking-code">
+                        <span className="tracking-code-label">Accuratess</span>
+                        <span className={`tracking-code-value${code ? '' : ' empty'}`}>
+                          {code || '—'}
+                        </span>
+                        {d.trackingUrl ? (
+                          <a href={d.trackingUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+                            رابط التتبع
+                          </a>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td>
                   <span className={statusBadgeClass(d.status)}>
