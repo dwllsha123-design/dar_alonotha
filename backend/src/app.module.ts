@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { ProductsModule } from './modules/products/products.module';
+import { CategoriesModule } from './modules/categories/categories.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { FacebookPagesModule } from './modules/facebook-pages/facebook-pages.module';
@@ -42,6 +43,7 @@ import { HealthController } from './health.controller';
     UsersModule,
     CustomersModule,
     ProductsModule,
+    CategoriesModule,
     OrdersModule,
     InventoryModule,
     FacebookPagesModule,

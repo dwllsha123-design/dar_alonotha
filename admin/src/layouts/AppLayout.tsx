@@ -15,7 +15,7 @@ const links: NavItem[] = [
   { to: '/', label: 'الرئيسية', icon: 'dashboard', perm: 'reports.view', hint: 'ملخص المبيعات وتنبيهات المخزون' },
   { to: '/orders', label: 'الطلبات', icon: 'shopping_cart', perm: 'orders.view', hint: 'متابعة طلبات الموقع وفيسبوك والمحل' },
   { to: '/branches', label: 'الفروع', icon: 'storefront', perm: 'branches.manage', hint: 'حسابات الفروع ومخزونها وتحويل البضائع' },
-  { to: '/products', label: 'المنتجات', icon: 'inventory_2', perm: 'products.view', hint: 'إضافة المنتجات والصور والمقاسات والباركود' },
+  { to: '/products', label: 'المنتجات', icon: 'inventory_2', perm: 'products.view', hint: 'إضافة المنتجات والصور والمقاسات والباركود والتصنيفات' },
   { to: '/inventory', label: 'المخزون', icon: 'storage', perm: 'inventory.view', hint: 'إدخال الكميات ومتابعة المتوفر' },
   { to: '/customers', label: 'العملاء', icon: 'group', perm: 'customers.view', hint: 'بيانات الزبائن وطلباتهم السابقة' },
   { to: '/delivery', label: 'التوصيل', icon: 'local_shipping', perm: 'orders.view', hint: 'تعيين مندوب أو شركة توصيل وطباعة البوليصة' },

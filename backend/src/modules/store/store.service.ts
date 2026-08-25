@@ -208,6 +208,7 @@ export class StoreService {
       orderBy: { sortOrder: 'asc' },
       select: {
         id: true,
+        parentId: true,
         nameAr: true,
         nameEn: true,
         slug: true,

@@ -109,6 +109,7 @@ export default function App() {
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/new" element={<NewFacebookOrderPage />} />
           <Route path="products" element={<ProductsPage />} />
+          <Route path="categories" element={<Navigate to="/products?tab=categories" replace />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="branches" element={<BranchesPage />} />

@@ -1,8 +1,9 @@
 ﻿import { FormEvent, Fragment, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, apiUpload, money, statusBadgeClass } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
+import { CategoriesPage } from '@/features/products/CategoriesPage';
 
-type Category = { id: string; nameAr: string; slug: string };
 type ProductImage = { id: string; url: string; isPrimary: boolean; color?: string | null };
 type Variant = {
   id: string;
@@ -26,7 +27,7 @@ type Product = {
   costPrice?: string | number;
   wholesalePrice?: string | number;
   status: string;
-  category?: Category | null;
+  category?: { id: string; nameAr: string; slug: string } | null;
   images?: ProductImage[];
   variants: Variant[];
 };
@@ -261,7 +262,6 @@ export function ProductsPage() {
   const canCreate = hasPermission('products.create') || isOwner;
   const canEdit = hasPermission('products.edit') || isOwner;
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
@@ -273,7 +273,6 @@ export function ProductsPage() {
   const [costPrice, setCostPrice] = useState<number | ''>('');
   const [sku, setSku] = useState('');
   const [brand, setBrand] = useState('');
-  const [categoryId, setCategoryId] = useState('');
   const [imageUrls, setImageUrls] = useState('');
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [colorGroups, setColorGroups] = useState<ColorGroup[]>([]);
@@ -289,14 +288,12 @@ export function ProductsPage() {
   const [salePercent, setSalePercent] = useState(20);
   const [saleBusy, setSaleBusy] = useState(false);
   const [saleError, setSaleError] = useState('');
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'categories' ? 'categories' : 'products';
 
   async function load() {
-    const [data, cats] = await Promise.all([
-      api<Product[]>('/products'),
-      api<Category[]>('/store/categories').catch(() => [] as Category[]),
-    ]);
+    const data = await api<Product[]>('/products');
     setProducts(data);
-    setCategories(cats);
   }
 
   useEffect(() => {
@@ -351,7 +348,6 @@ export function ProductsPage() {
     setCostPrice('');
     setSku('');
     setBrand('');
-    setCategoryId('');
     setImageUrls('');
     setPendingFiles([]);
     setColorGroups([]);
@@ -373,7 +369,6 @@ export function ProductsPage() {
     setCostPrice(p.costPrice != null && p.costPrice !== '' ? Number(p.costPrice) : '');
     setSku(p.sku || '');
     setBrand(p.brand || '');
-    setCategoryId(p.category?.id || '');
     setImageUrls('');
     setPendingFiles([]);
     setColorGroups([]);
@@ -422,7 +417,6 @@ export function ProductsPage() {
           body: JSON.stringify({
             nameAr,
             description: description || undefined,
-            categoryId: categoryId || null,
             retailPrice,
             wholesalePrice: isOwner && wholesalePrice !== '' ? Number(wholesalePrice) : undefined,
             costPrice: canSeeCost && costPrice !== '' ? Number(costPrice) : undefined,
@@ -457,7 +451,6 @@ export function ProductsPage() {
         body: JSON.stringify({
           nameAr,
           description: description || undefined,
-          categoryId: categoryId || undefined,
           retailPrice,
           wholesalePrice: isOwner && wholesalePrice !== '' ? Number(wholesalePrice) : undefined,
           costPrice: canSeeCost && costPrice !== '' ? Number(costPrice) : undefined,
@@ -604,36 +597,67 @@ export function ProductsPage() {
       <div className="topbar">
         <div className="page-title">
           <h1>إدارة المنتجات</h1>
-          <p>من هنا تضيفين منتجاتك: الألوان بصورها، المقاسات، المخزون، والباركود الفريد لكل لون/مقاس.</p>
+          <p>
+            {tab === 'categories'
+              ? 'أضيفي الفئات والتصنيفات ورتّبيها — تظهر في المتجر فوراً.'
+              : 'من هنا تضيفين منتجاتك: الألوان بصورها، المقاسات، المخزون، والباركود الفريد لكل لون/مقاس.'}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {canEdit ? (
-            <button className="btn secondary" type="button" onClick={() => void generateMissing()}>
-              إصدار باركود للناقص
-            </button>
-          ) : null}
-          {canCreate ? (
-            <button
-              className="btn"
-              type="button"
-              onClick={() => {
-                if (showCreate && !editingId) {
-                  cancelForm();
-                  return;
-                }
-                resetForm();
-                setShowCreate(true);
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-                add
-              </span>
-              {showCreate && !editingId ? 'إخفاء النموذج' : 'إضافة منتج'}
-            </button>
-          ) : null}
-        </div>
+        {tab === 'products' ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {canEdit ? (
+              <button className="btn secondary" type="button" onClick={() => void generateMissing()}>
+                إصدار باركود للناقص
+              </button>
+            ) : null}
+            {canCreate ? (
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  if (showCreate && !editingId) {
+                    cancelForm();
+                    return;
+                  }
+                  resetForm();
+                  setShowCreate(true);
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+                  add
+                </span>
+                {showCreate && !editingId ? 'إخفاء النموذج' : 'إضافة منتج'}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
+      <div className="page-tabs" role="tablist" aria-label="أقسام المنتجات">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'products'}
+          className={tab === 'products' ? 'active' : ''}
+          onClick={() => setParams({})}
+        >
+          المنتجات
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'categories'}
+          className={tab === 'categories' ? 'active' : ''}
+          onClick={() => setParams({ tab: 'categories' })}
+        >
+          التصنيفات
+        </button>
+      </div>
+
+      {tab === 'categories' ? <CategoriesPage embedded /> : null}
+
+      {tab === 'products' ? (
+        <>
       <div className="stats">
         <div className="stat">
           <div className="stat-label">إجمالي المنتجات</div>
@@ -662,17 +686,6 @@ export function ProductsPage() {
           <label>
             اسم المنتج
             <input value={nameAr} onChange={(e) => setNameAr(e.target.value)} required />
-          </label>
-          <label>
-            التصنيف
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">بدون تصنيف</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nameAr}
-                </option>
-              ))}
-            </select>
           </label>
           <label style={{ gridColumn: '1 / -1' }}>
             الوصف
@@ -1342,6 +1355,8 @@ export function ProductsPage() {
             </div>
           </div>
         </div>
+      ) : null}
+        </>
       ) : null}
     </div>
   );
