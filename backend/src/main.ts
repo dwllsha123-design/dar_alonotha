@@ -31,9 +31,15 @@ async function bootstrap() {
         .split(',')[0]
         .trim()
         .toLowerCase();
+      const host = String(req.headers.host || '')
+        .split(':')[0]
+        .toLowerCase();
       if (proto === 'http') {
-        const host = req.headers.host || 'daralonotha.com';
-        return res.redirect(301, `https://${host}${req.originalUrl}`);
+        const targetHost = host.startsWith('www.') ? host.slice(4) : host || 'daralonotha.com';
+        return res.redirect(301, `https://${targetHost}${req.originalUrl}`);
+      }
+      if (host === 'www.daralonotha.com') {
+        return res.redirect(301, `https://daralonotha.com${req.originalUrl}`);
       }
       return next();
     });

@@ -31,7 +31,7 @@ server {
     # Variable forces runtime DNS (avoids "host not found in upstream" at boot)
     set $api_upstream "${API_UPSTREAM}";
 
-    # Strict HTTPS for browsers hitting http://daralonotha.com (Railway sets X-Forwarded-Proto)
+    # Strict HTTPS for browsers hitting http://… (Railway sets X-Forwarded-Proto)
     # Skip when header is missing (local Compose) or already https — prevents redirect loops.
     set $need_https_redirect $https_force_redirect;
     if ($uri = /healthz) {
@@ -39,6 +39,12 @@ server {
     }
     if ($need_https_redirect = 1) {
         return 301 https://$host$request_uri;
+    }
+
+    # Canonical host: www.daralonotha.com → https://daralonotha.com
+    # Requires BOTH hostnames added as custom domains on the Railway web service.
+    if ($host = www.daralonotha.com) {
+        return 301 https://daralonotha.com$request_uri;
     }
 
     # Tell browsers to prefer HTTPS after first secure visit
