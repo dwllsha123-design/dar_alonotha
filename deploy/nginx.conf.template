@@ -3,6 +3,7 @@
 #
 # Railway: public HTTPS (443) terminates at the edge; container must listen on $PORT (HTTP).
 # Do NOT listen on 443 or configure SSL here — there are no certs inside the image.
+# HTTP→HTTPS is enforced via X-Forwarded-Proto (see $https_force_redirect in nginx.main.conf).
 #
 # API_UPSTREAM:
 #   Docker Compose → api:3000
@@ -30,6 +31,19 @@ server {
     # Variable forces runtime DNS (avoids "host not found in upstream" at boot)
     set $api_upstream "${API_UPSTREAM}";
 
+    # Strict HTTPS for browsers hitting http://daralonotha.com (Railway sets X-Forwarded-Proto)
+    # Skip when header is missing (local Compose) or already https — prevents redirect loops.
+    set $need_https_redirect $https_force_redirect;
+    if ($uri = /healthz) {
+        set $need_https_redirect 0;
+    }
+    if ($need_https_redirect = 1) {
+        return 301 https://$host$request_uri;
+    }
+
+    # Tell browsers to prefer HTTPS after first secure visit
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
     location = /healthz {
         access_log off;
         default_type text/plain;
@@ -55,6 +69,7 @@ server {
         alias /var/www/uploads/;
         expires 30d;
         add_header Cache-Control "public";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         try_files $uri @uploads_api;
     }
 

@@ -18,8 +18,26 @@ async function bootstrap() {
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       contentSecurityPolicy: false,
+      hsts: isProduction()
+        ? { maxAge: 31536000, includeSubDomains: true, preload: false }
+        : false,
     }),
   );
+
+  // Behind Railway/Nginx: upgrade plain HTTP when the edge marks the request as http
+  if (isProduction()) {
+    app.use((req, res, next) => {
+      const proto = String(req.headers['x-forwarded-proto'] || '')
+        .split(',')[0]
+        .trim()
+        .toLowerCase();
+      if (proto === 'http') {
+        const host = req.headers.host || 'daralonotha.com';
+        return res.redirect(301, `https://${host}${req.originalUrl}`);
+      }
+      return next();
+    });
+  }
 
   const uploadsDir = join(process.cwd(), 'uploads');
   mkdirSync(join(uploadsDir, 'products'), { recursive: true });
