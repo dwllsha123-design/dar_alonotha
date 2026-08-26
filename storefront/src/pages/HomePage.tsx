@@ -5,6 +5,7 @@ import { ProductGrid } from '../components/ProductCard';
 import { StoreLink } from '../components/StoreLink';
 import { categoryImage } from '../data/catalog';
 import { HERO_SLIDES, HOME_IMAGES } from '../data/homeImages';
+import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
 type Banner = {
@@ -68,7 +69,7 @@ export function HomePage() {
     if (heroSlides.length < 2) return;
     const timer = window.setInterval(() => {
       setHeroIndex((i) => (i + 1) % heroSlides.length);
-    }, 3000);
+    }, 4500);
     return () => window.clearInterval(timer);
   }, [heroSlides.length]);
 
@@ -76,12 +77,12 @@ export function HomePage() {
 
   return (
     <>
-      <section className="hero-lux">
-        <div className="hero-lux-media">
+      <section className="hero-ly">
+        <div className="hero-ly-media">
           {heroSlides.map((slide, i) => (
             <img
               key={slide.id}
-              className={`hero-lux-slide${i === heroIndex ? ' is-active' : ''}`}
+              className={`hero-ly-slide${i === heroIndex ? ' is-active' : ''}`}
               src={slide.src}
               alt={slide.alt}
               decoding="async"
@@ -94,6 +95,7 @@ export function HomePage() {
               }}
             />
           ))}
+          <div className="hero-ly-overlay" />
           <div className="hero-dots" aria-hidden>
             {heroSlides.map((slide, i) => (
               <button
@@ -106,24 +108,41 @@ export function HomePage() {
             ))}
           </div>
         </div>
-        <div className="hero-lux-inner">
-          <h1 className="headline-xl">أناقتكِ تبدأ من هنا</h1>
-          <p className="body-lg">
-            اكتشفي أحدث تشكيلات دار الأنوثة من اللانجري والملابس النسائية والأرواب والباروكات.
-            تصاميم تجمع بين الرقي والراحة لتبرز جمالكِ الطبيعي.
-          </p>
-          <div className="hero-cta">
-            <Link className="btn" to="/products">
-              تسوّقي الآن
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-                arrow_back
-              </span>
-            </Link>
-            <Link className="btn secondary" to="/offers">
-              اكتشفي العروض
-            </Link>
-          </div>
+        <div className="hero-ly-cta">
+          <Link className="btn hero-ly-btn" to="/products">
+            {SITE_COPY.heroCta}
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+              arrow_back
+            </span>
+          </Link>
         </div>
+      </section>
+
+      <section className="container section">
+        <div className="section-head">
+          <div>
+            <h2 className="headline-lg">{SITE_COPY.newArrivals}</h2>
+          </div>
+          <Link className="label-md" to="/new" style={{ color: 'var(--primary)' }}>
+            عرض المزيد
+          </Link>
+        </div>
+        {newItems.length ? (
+          <ProductGrid products={newItems.slice(0, 4)} />
+        ) : (
+          <div className="coming-soon-banner panel">
+            <img src={HOME_IMAGES.comingSoon} alt="" loading="lazy" decoding="async" />
+            <div>
+              <span className="chip-new">{SITE_COPY.comingSoon}</span>
+              <p className="body-lg" style={{ margin: '8px 0 0' }}>
+                {SITE_COPY.newArrivalsEmpty}
+              </p>
+              <Link className="btn secondary" to="/products" style={{ marginTop: 16 }}>
+                تصفّحي المتجر
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="story-lux">
@@ -132,14 +151,11 @@ export function HomePage() {
             <img src={HOME_IMAGES.comingSoon} alt="أزياء دار الأنوثة" />
           </div>
           <div className="story-lux-copy">
-            <span className="kicker">لماذا دار الأنوثة؟</span>
-            <h2 className="headline-lg">نعيد تعريف الفخامة البسيطة</h2>
-            <p className="body-lg">
-              نهتم بأدق التفاصيل من اختيار الأقمشة الفاخرة إلى الخياطة المتقنة، لنضمن لكِ إطلالة تجمع بين
-              الراحة والجاذبية في كل الأوقات.
-            </p>
-            <Link className="btn secondary" to="/products">
-              اكتشفي قصتنا
+            <span className="kicker">{SITE_COPY.storyKicker}</span>
+            <h2 className="headline-lg">{SITE_COPY.storyTitle}</h2>
+            <p className="body-lg">{SITE_COPY.storyBody}</p>
+            <Link className="btn secondary" to="/about">
+              {SITE_COPY.storyCta}
             </Link>
           </div>
         </div>
@@ -167,64 +183,43 @@ export function HomePage() {
         </section>
       ) : null}
 
-      <section className="container section">
-        <h2 className="headline-lg section-title">تسوقي حسب الفئة</h2>
-        <div className="bento">
-          {featured.map((c, idx) => (
-            <Link
-              key={c.id}
-              to={`/category/${c.slug}`}
-              className={idx === 0 ? 'bento-card span-2' : 'bento-card'}
-            >
-              <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+      {featured.length ? (
+        <section className="container section">
+          <h2 className="headline-lg section-title">تسوقي حسب الفئة</h2>
+          <div className="bento">
+            {featured.map((c, idx) => (
+              <Link
+                key={c.id}
+                to={`/category/${c.slug}`}
+                className={idx === 0 ? 'bento-card span-2' : 'bento-card'}
+              >
+                <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+                <div className="label">
+                  <h3 className="headline-md" style={{ margin: 0 }}>
+                    {c.nameAr}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+            <Link to="/offers" className="bento-card offer">
               <div className="label">
+                <span className="material-symbols-outlined" style={{ fontSize: 36, marginBottom: 8 }}>
+                  local_offer
+                </span>
                 <h3 className="headline-md" style={{ margin: 0 }}>
-                  {c.nameAr}
+                  عروض
                 </h3>
               </div>
             </Link>
-          ))}
-          <Link to="/offers" className="bento-card offer">
-            <div className="label">
-              <span className="material-symbols-outlined" style={{ fontSize: 36, marginBottom: 8 }}>
-                local_offer
-              </span>
-              <h3 className="headline-md" style={{ margin: 0 }}>
-                عروض
-              </h3>
-            </div>
-          </Link>
-          <Link to="/new" className="bento-card wide new-banner">
-            <img src="/home/coming-soon.jpg" alt="وصل حديثاً" loading="lazy" decoding="async" />
-            <div className="label">
-              <span className="chip-new">وصل حديثاً</span>
-              <h3 className="headline-lg" style={{ margin: 0 }}>
-                أحدث التشكيلات
-              </h3>
-            </div>
-          </Link>
-        </div>
-      </section>
-
-      <section className="container section">
-        <div className="section-head">
-          <div>
-            <h2 className="headline-lg">وصل حديثاً</h2>
-            <p>قطع جديدة لموسمكِ</p>
           </div>
-          <Link className="label-md" to="/new" style={{ color: 'var(--primary)' }}>
-            عرض الكل
-          </Link>
-        </div>
-        <ProductGrid products={newItems.slice(0, 4)} />
-      </section>
+        </section>
+      ) : null}
 
       {offers.length ? (
         <section className="container section">
           <div className="section-head">
             <div>
               <h2 className="headline-lg">العروض الحالية</h2>
-              <p>خصومات محدودة على تشكيلات مختارة</p>
             </div>
             <Link className="label-md" to="/offers" style={{ color: 'var(--primary)' }}>
               كل العروض
@@ -234,18 +229,19 @@ export function HomePage() {
         </section>
       ) : null}
 
-      <section className="container section">
-        <div className="section-head">
-          <div>
-            <h2 className="headline-lg">الأكثر مبيعاً</h2>
-            <p>اختيارات عميلاتنا المفضلة</p>
+      {bestsellers.length ? (
+        <section className="container section">
+          <div className="section-head">
+            <div>
+              <h2 className="headline-lg">الأكثر مبيعاً</h2>
+            </div>
+            <Link className="label-md" to="/bestseller" style={{ color: 'var(--primary)' }}>
+              عرض الكل
+            </Link>
           </div>
-          <Link className="label-md" to="/bestseller" style={{ color: 'var(--primary)' }}>
-            عرض الكل
-          </Link>
-        </div>
-        <ProductGrid products={bestsellers.slice(0, 4)} />
-      </section>
+          <ProductGrid products={bestsellers.slice(0, 4)} />
+        </section>
+      ) : null}
     </>
   );
 }

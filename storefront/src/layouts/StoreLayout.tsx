@@ -2,9 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useCart } from '../cart/CartContext';
 import { useAuth } from '../auth/AuthContext';
-import { useStoreCategories } from '../hooks/useStoreCategories';
+import { NewsletterForm } from '../components/NewsletterForm';
+import {
+  SITE_COPY,
+  STORE_EMAIL,
+  STORE_LOCATION,
+  STORE_PHONE_LINKS,
+  STORE_PHONES,
+} from '../data/siteContent';
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeToggle } from '../theme/ThemeToggle';
+import { useStoreCategories } from '../hooks/useStoreCategories';
 
 const CATEGORY_ICONS: Record<string, string> = {
   lingerie: 'checkroom',
@@ -26,6 +34,7 @@ function bottomActive(pathname: string, key: string) {
     );
   }
   if (key === 'categories') return pathname.startsWith('/categories');
+  if (key === 'about') return pathname.startsWith('/about');
   if (key === 'cart') return pathname.startsWith('/cart') || pathname.startsWith('/checkout');
   if (key === 'account') {
     return (
@@ -100,6 +109,19 @@ export function StoreLayout() {
 
   return (
     <div className="page-shell">
+      <div className="top-bar">
+        <div className="container top-bar-inner">
+          <span className="top-bar-welcome">{SITE_COPY.welcome}</span>
+          <div className="top-bar-links">
+            {STORE_PHONE_LINKS.map((p) => (
+              <a key={p.href} href={p.href}>
+                {p.label}
+              </a>
+            ))}
+            <Link to="/track">تتبع طلبك</Link>
+          </div>
+        </div>
+      </div>
       <header className={`site-header${headerHidden ? ' is-hidden' : ''}`}>
         <div className="container">
           <div className="header-bar">
@@ -141,8 +163,7 @@ export function StoreLayout() {
             </NavLink>
             <NavLink to="/products">المتجر</NavLink>
             <NavLink to="/categories">التصنيفات</NavLink>
-            <NavLink to="/offers">العروض</NavLink>
-            <NavLink to="/new">جديد</NavLink>
+            <NavLink to="/about">من نحن</NavLink>
           </nav>
         </div>
       </header>
@@ -172,7 +193,7 @@ export function StoreLayout() {
               )}
             </p>
             <p className="label-sm muted" style={{ margin: 0 }}>
-              طرابلس — 0921820999 · 0924443839
+              {STORE_LOCATION} — {STORE_PHONES}
             </p>
           </div>
           <nav className="drawer-nav">
@@ -201,31 +222,59 @@ export function StoreLayout() {
       <Outlet />
 
       <footer className="site-footer">
-        <div className="container footer-grid">
+        <div className="container footer-grid footer-grid-ly">
           <div className="footer-brand">
             <img className="footer-logo" src="/brand-logo.png" alt="دار الأنوثة" />
-            <p>عنوان الأناقة والجاذبية في طرابلس. نُقدم لكِ أرقى تشكيلة من اللانجري، الملابس النسائية، الأرواب، والباروكات.</p>
-            <p>التوصيل متوفر لجميع مناطق ليبيا.</p>
-            <p>للتواصل: 0921820999 · 0924443839</p>
+            <h3>حول المتجر</h3>
+            <p>{SITE_COPY.footerAbout}</p>
+            <p>{SITE_COPY.footerDelivery}</p>
+            <ul className="footer-contact">
+              <li>{STORE_LOCATION}</li>
+              <li>
+                {STORE_PHONE_LINKS.map((p, i) => (
+                  <span key={p.href}>
+                    {i > 0 ? ' / ' : null}
+                    <a href={p.href}>{p.label}</a>
+                  </span>
+                ))}
+              </li>
+              <li>
+                <a href={`mailto:${STORE_EMAIL}`}>{STORE_EMAIL}</a>
+              </li>
+            </ul>
           </div>
-          <div>
-            <strong>تسوقي</strong>
-            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-              <Link to="/products">كل المنتجات</Link>
-              <Link to="/offers">العروض</Link>
-              <Link to="/track">تتبع الطلب</Link>
-            </div>
-          </div>
-          <div>
-            <strong>معلومات</strong>
-            <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+          <div className="footer-col">
+            <strong>روابط سريعة</strong>
+            <div className="footer-links">
+              <Link to="/">الصفحة الرئيسية</Link>
               <Link to="/about">من نحن</Link>
-              <Link to="/contact">تواصل معنا</Link>
-              <Link to="/policies/returns">الاستبدال والاسترجاع</Link>
-              <Link to="/policies/privacy">الخصوصية</Link>
-              <Link to="/policies/terms">الشروط</Link>
+              <Link to="/products">تسوق الآن</Link>
+              <Link to="/reviews">آراء العملاء</Link>
+              <Link to="/policies/shipping">سياسة الشحن</Link>
             </div>
           </div>
+          <div className="footer-col">
+            <strong>دعم العملاء</strong>
+            <div className="footer-links">
+              <Link to="/track">تتبع طلبك</Link>
+              <Link to="/cart">سلة المشتريات</Link>
+              <Link to="/policies/returns">سياسة الاسترجاع</Link>
+              <Link to="/policies/shipping">طرق الشحن</Link>
+              <Link to="/contact">خدمة العملاء</Link>
+            </div>
+          </div>
+          <div className="footer-col">
+            <strong>النشرة الإخبارية</strong>
+            <p className="footer-newsletter-hint">للحصول على آخر الأخبار وآخر التحديثات منا.</p>
+            <NewsletterForm />
+            <div className="pay-badges" aria-label="طرق الدفع">
+              <span>Visa</span>
+              <span>Mastercard</span>
+            </div>
+          </div>
+        </div>
+        <div className="container footer-bottom">
+          <p>{SITE_COPY.copyright}</p>
         </div>
       </footer>
 

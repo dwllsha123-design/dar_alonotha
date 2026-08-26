@@ -18,8 +18,10 @@ import {
   SearchPage,
   ContentPage,
 } from './pages/AccountPages';
+import { ReviewsPage } from './pages/ReviewsPage';
 import { captureAttributionFromUrl } from './api/client';
 import { ThemeProvider } from './theme/ThemeContext';
+import { SITE_COPY, STORE_PHONES, STORE_LOCATION } from './data/siteContent';
 
 function AttributionCapture() {
   const location = useLocation();
@@ -59,44 +61,30 @@ export default function App() {
             <Route path="wishlist" element={<WishlistPage />} />
             <Route
               path="about"
-              element={
-                <ContentPage
-                  title="من نحن"
-                  body={[
-                    'دار الأنوثة — عنوان الأناقة والجاذبية في طرابلس.',
-                    'نُقدم لكِ أرقى تشكيلة من اللانجري، الملابس النسائية، الأرواب، والباروكات.',
-                    'التوصيل متوفر لجميع مناطق ليبيا.',
-                    'للتواصل: 0921820999 · 0924443839',
-                  ]}
-                />
-              }
+              element={<ContentPage title="من نحن" body={[...SITE_COPY.about]} />}
             />
+            <Route path="reviews" element={<ReviewsPage />} />
             <Route
               path="contact"
               element={
                 <ContentPage
-                  title="تواصل معنا"
+                  title="خدمة العملاء"
                   body={[
-                    'طرابلس — ليبيا',
-                    'الهاتف: 0921820999',
-                    'الهاتف: 0924443839',
-                    'يسعدنا خدمتكِ يومياً لاستفسارات الطلبات والمنتجات.',
+                    STORE_LOCATION,
+                    `الهاتف: ${STORE_PHONES}`,
+                    'يسعدنا خدمتكِ يومياً لاستفسارات الطلبات والمنتجات والاستبدال.',
+                    'يمكنكِ أيضاً متابعة طلبك من صفحة «تتبع طلبك».',
                   ]}
                 />
               }
             />
             <Route
+              path="policies/shipping"
+              element={<ContentPage title="سياسة الشحن وطرق التوصيل" body={[...SITE_COPY.shipping]} />}
+            />
+            <Route
               path="policies/returns"
-              element={
-                <ContentPage
-                  title="سياسة الاستبدال والاسترجاع"
-                  body={[
-                    'يمكن مراجعة طلب الاستبدال أو الاسترجاع خلال مدة يتم الاتفاق عليها مع خدمة العملاء.',
-                    'يشترط أن يكون المنتج بحالته الأصلية مع الحفاظ على الملصقات إن وجدت.',
-                    'للتواصل بخصوص المرتجعات: 0921820999 / 0924443839',
-                  ]}
-                />
-              }
+              element={<ContentPage title="سياسة الاسترجاع" body={[...SITE_COPY.returns]} />}
             />
             <Route
               path="policies/privacy"
