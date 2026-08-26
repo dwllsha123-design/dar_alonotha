@@ -88,11 +88,14 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
   }
 
-  const port = config.get<number>('PORT', 3000);
-  // 0.0.0.0 for Docker/VPS; also accept IPv6 for Railway private networking
-  await app.listen(port, '::');
+  const port = Number(config.get('PORT') ?? process.env.PORT ?? 3000);
+  // Bind dual-stack when possible:
+  // - 0.0.0.0 → public Railway / Docker IPv4 health checks
+  // - :: → Railway private networking (*.railway.internal is IPv6)
+  // Listening only on "::" with ipv6only can reject IPv4; prefer host omitted (Node dual-stack).
+  await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log(`API running on ${config.get('APP_URL') || `http://localhost:${port}`}/api/v1`);
+  console.log(`API listening on 0.0.0.0/:: port ${port} → ${config.get('APP_URL') || `http://localhost:${port}`}/api/v1`);
   if (!isProduction()) {
     // eslint-disable-next-line no-console
     console.log(`Swagger docs: http://localhost:${port}/docs`);

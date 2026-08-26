@@ -35,9 +35,11 @@ services:
     environment:
       # Docker Compose DNS name of the Nest service (see services.api)
       API_UPSTREAM: api:3000
+      # HTTP only inside the container (TLS/443 stays at reverse proxy / Railway edge)
       PORT: "80"
     ports:
       - "80:80"
+    # Do not publish 443 on the web container — no certs inside this image
     volumes:
       - uploads_data:/var/www/uploads
     depends_on:

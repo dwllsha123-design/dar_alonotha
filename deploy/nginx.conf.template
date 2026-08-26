@@ -1,18 +1,25 @@
-# Templated by the official nginx image (envsubst) from
-# /etc/nginx/templates/default.conf.template
+# Runtime template for official nginx image:
+#   /etc/nginx/templates/default.conf.template → conf.d/default.conf (envsubst)
 #
-# API_UPSTREAM examples:
-#   Docker Compose: api:3000
-#   Railway private network: backend.railway.internal:3000
+# Railway: public HTTPS (443) terminates at the edge; container must listen on $PORT (HTTP).
+# Do NOT listen on 443 or configure SSL here — there are no certs inside the image.
 #
-# PORT: Railway injects this; local compose defaults to 80.
+# API_UPSTREAM:
+#   Docker Compose → api:3000
+#   Railway private → <backend-service>.railway.internal:3000
+#
+# PORT: Railway injects this (often 8080). Compose defaults to 80.
 
 server {
+    # IPv4 only — safer on hosts without usable IPv6 (failed [::] bind kills nginx)
     listen ${PORT};
-    listen [::]:${PORT};
     server_name _;
 
     client_max_body_size 8m;
+
+    # Avoid http://host:PORT redirects that break behind Railway TLS
+    absolute_redirect off;
+    port_in_redirect off;
 
     # Docker embedded DNS + Railway private-network DNS
     resolver 127.0.0.11 [fd12::10] ipv6=on valid=10s;
@@ -23,15 +30,25 @@ server {
     # Variable forces runtime DNS (avoids "host not found in upstream" at boot)
     set $api_upstream "${API_UPSTREAM}";
 
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
     location /api/ {
         proxy_pass http://$api_upstream/api/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-Port $forwarded_port;
         proxy_connect_timeout 10s;
+        proxy_send_timeout 60s;
         proxy_read_timeout 60s;
+        proxy_buffering on;
     }
 
     location /uploads/ {
@@ -43,20 +60,28 @@ server {
 
     location @uploads_api {
         proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-Port $forwarded_port;
     }
 
     location /r/ {
         proxy_pass http://$api_upstream/r/;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Port $forwarded_port;
     }
 
     location /.well-known/ {
         proxy_pass http://$api_upstream/.well-known/;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
     location /admin {

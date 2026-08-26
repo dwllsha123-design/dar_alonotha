@@ -37,6 +37,8 @@ curl -s http://127.0.0.1/api/v1/health
   - `API_UPSTREAM=backend.railway.internal:3000`  
     (استبدل `backend` باسم خدمة الـ Nest الفعلية في المشروع إن اختلف)
   - تأكد أن Private Networking مفعّل بين خدمتَي web و backend.
+  - **لا تضبطي PORT=443** ولا SSL داخل الحاوية: Railway ينهي HTTPS على الحافة ويحوّل HTTP إلى `$PORT` داخل Nginx.
+  - Health check مقترح للخدمة web: مسار `/healthz`
 
 بعد أول دخول غيّر كلمة سر المدير واضبط `ALLOW_SEED=false`.
 
