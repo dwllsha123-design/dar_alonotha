@@ -5,12 +5,14 @@ type Category = {
   id: string;
   parentId: string | null;
   nameAr: string;
-  nameEn?: string | null;
   slug: string;
   sortOrder: number;
   isActive: boolean;
+  parent?: { id: string; nameAr: string; slug: string } | null;
   _count?: { products: number; children: number };
 };
+
+type CatTab = 'parents' | 'children';
 
 export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   const [rows, setRows] = useState<Category[]>([]);
@@ -18,7 +20,9 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
+  const [catTab, setCatTab] = useState<CatTab>('parents');
   const [nameAr, setNameAr] = useState('');
+  const [parentId, setParentId] = useState('');
   const [drafts, setDrafts] = useState<Record<string, { nameAr: string; isActive: boolean }>>({});
 
   async function load() {
@@ -35,16 +39,25 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
     load().catch((e) => setError(e instanceof Error ? e.message : 'فشل التحميل'));
   }, []);
 
+  const parents = useMemo(() => rows.filter((c) => !c.parentId), [rows]);
+
   const visible = useMemo(() => {
     const term = q.trim();
-    const sorted = [...rows].sort(
+    const base =
+      catTab === 'parents'
+        ? rows.filter((c) => !c.parentId)
+        : rows.filter((c) => c.parentId);
+    const sorted = [...base].sort(
       (a, b) => a.sortOrder - b.sortOrder || a.nameAr.localeCompare(b.nameAr, 'ar'),
     );
     if (!term) return sorted;
     return sorted.filter(
-      (c) => c.nameAr.includes(term) || drafts[c.id]?.nameAr?.includes(term),
+      (c) =>
+        c.nameAr.includes(term) ||
+        c.parent?.nameAr.includes(term) ||
+        drafts[c.id]?.nameAr?.includes(term),
     );
-  }, [rows, q, drafts]);
+  }, [rows, q, drafts, catTab]);
 
   function patchDraft(id: string, next: Partial<{ nameAr: string; isActive: boolean }>) {
     setDrafts((prev) => ({
@@ -61,7 +74,11 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
     e.preventDefault();
     const name = nameAr.trim();
     if (!name) {
-      setError('اكتبي اسم التصنيف');
+      setError(catTab === 'parents' ? 'اكتبي اسم الفئة' : 'اكتبي اسم الصنف');
+      return;
+    }
+    if (catTab === 'children' && !parentId) {
+      setError('اختاري الفئة التي ينتمي إليها هذا الصنف');
       return;
     }
     setError('');
@@ -70,10 +87,14 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
     try {
       await api('/categories', {
         method: 'POST',
-        body: JSON.stringify({ nameAr: name }),
+        body: JSON.stringify({
+          nameAr: name,
+          parentId: catTab === 'children' ? parentId : null,
+        }),
       });
       setNameAr('');
-      setMsg('تم إضافة التصنيف');
+      setParentId('');
+      setMsg(catTab === 'parents' ? 'تم إضافة الفئة' : 'تم إضافة الصنف');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل الحفظ');
@@ -85,7 +106,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   async function saveRow(c: Category) {
     const draft = drafts[c.id];
     if (!draft?.nameAr.trim()) {
-      setError('اسم التصنيف مطلوب');
+      setError('الاسم مطلوب');
       return;
     }
     setError('');
@@ -106,7 +127,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   }
 
   async function removeRow(c: Category) {
-    if (!confirm(`حذف التصنيف «${c.nameAr}»؟`)) return;
+    if (!confirm(`حذف «${c.nameAr}»؟`)) return;
     setError('');
     setMsg('');
     try {
@@ -119,7 +140,9 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   }
 
   async function moveRow(c: Category, dir: -1 | 1) {
-    const siblings = [...rows].sort((a, b) => a.sortOrder - b.sortOrder);
+    const siblings = rows
+      .filter((r) => (r.parentId || '') === (c.parentId || ''))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
     const idx = siblings.findIndex((r) => r.id === c.id);
     const swap = siblings[idx + dir];
     if (!swap) return;
@@ -145,20 +168,53 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
     <div className="stack">
       {embedded ? null : (
         <div className="page-title">
-          <h1>التصنيفات</h1>
-          <p>أضيفي تصنيفاً جديداً أو عدّلي القائمة. يظهر في المتجر فوراً.</p>
+          <h1>الفئات والأصناف</h1>
+          <p>أضيفي فئة رئيسية ثم أصنافاً تابعة لها. تظهر في المتجر فوراً.</p>
         </div>
       )}
+
+      <div className="page-tabs" role="tablist" aria-label="الفئات والأصناف">
+        <button
+          type="button"
+          role="tab"
+          className={catTab === 'parents' ? 'active' : ''}
+          onClick={() => setCatTab('parents')}
+        >
+          الفئات ({parents.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={catTab === 'children' ? 'active' : ''}
+          onClick={() => setCatTab('children')}
+        >
+          الأصناف ({rows.length - parents.length})
+        </button>
+      </div>
+
       {error ? <div className="error">{error}</div> : null}
       {msg ? <div className="success">{msg}</div> : null}
 
       <form className="panel form-grid two" onSubmit={onCreate}>
+        {catTab === 'children' ? (
+          <label>
+            تابع لفئة
+            <select value={parentId} onChange={(e) => setParentId(e.target.value)} required>
+              <option value="">— اختاري الفئة —</option>
+              {parents.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nameAr}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
-          إضافة تصنيف
+          {catTab === 'parents' ? 'إضافة فئة' : 'إضافة صنف'}
           <input
             value={nameAr}
             onChange={(e) => setNameAr(e.target.value)}
-            placeholder="اكتبي اسم التصنيف"
+            placeholder={catTab === 'parents' ? 'مثال: لانجري' : 'مثال: لانجري قطن'}
             required
             autoComplete="off"
           />
@@ -170,9 +226,13 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
         </div>
       </form>
 
+      {catTab === 'children' && !parents.length ? (
+        <div className="panel muted">أضيفي فئة رئيسية أولاً ثم أضيفي الأصناف تحتها.</div>
+      ) : null}
+
       <div className="panel table-wrap">
         <div className="toolbar">
-          <strong>التصنيفات ({rows.length})</strong>
+          <strong>{catTab === 'parents' ? 'الفئات' : 'الأصناف'} ({visible.length})</strong>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -184,6 +244,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
           <thead>
             <tr>
               <th>الاسم</th>
+              {catTab === 'children' ? <th>الفئة</th> : null}
               <th>منتجات</th>
               <th>ترتيب</th>
               <th>الحالة</th>
@@ -202,6 +263,9 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
                       onChange={(e) => patchDraft(c.id, { nameAr: e.target.value })}
                     />
                   </td>
+                  {catTab === 'children' ? (
+                    <td>{c.parent?.nameAr || parents.find((p) => p.id === c.parentId)?.nameAr || '—'}</td>
+                  ) : null}
                   <td>{c._count?.products ?? 0}</td>
                   <td>
                     <div className="toolbar" style={{ justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
@@ -238,8 +302,10 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
             })}
             {!visible.length ? (
               <tr>
-                <td colSpan={5} className="muted">
-                  لا توجد تصنيفات بعد — أضيفي أول تصنيف من الخانة أعلاه.
+                <td colSpan={catTab === 'children' ? 6 : 5} className="muted">
+                  {catTab === 'parents'
+                    ? 'لا توجد فئات بعد — أضيفي أول فئة من النموذج أعلاه.'
+                    : 'لا توجد أصناف بعد — أضيفي صنفاً واربطيه بفئة.'}
                 </td>
               </tr>
             ) : null}

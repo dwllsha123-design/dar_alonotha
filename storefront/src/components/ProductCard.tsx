@@ -65,7 +65,14 @@ export function ProductCard({ product }: { product: StoreProduct }) {
       <div className="thumb">
         <Link to={`/product/${product.id}`} className="thumb-link" aria-label={product.nameAr}>
           {img ? (
-            <img src={img} alt={product.nameAr} width={1200} height={1500} loading="lazy" />
+            <img
+              key={img}
+              src={img}
+              alt={product.nameAr}
+              width={1200}
+              height={1500}
+              loading="lazy"
+            />
           ) : (
             <div className="thumb-ph" aria-hidden>
               <span className="material-symbols-outlined">checkroom</span>
@@ -123,7 +130,11 @@ export function ProductCard({ product }: { product: StoreProduct }) {
                 title={c}
                 aria-label={c}
                 style={{ background: storeColorHex(c) || '#ccc' }}
-                onClick={() => setPreviewColor((prev) => (prev === c ? null : c))}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setPreviewColor(c);
+                }}
               />
             ))}
             {colors.length > COLOR_LIMIT ? (

@@ -114,6 +114,7 @@ export function ProductPage() {
           <div className={`gallery-main${unavailable ? ' is-unavailable' : ''}`}>
             {mainImage ? (
               <img
+                key={mainImage}
                 src={mainImage}
                 alt={product.nameAr}
                 width={1200}

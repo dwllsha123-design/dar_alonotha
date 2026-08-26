@@ -18,6 +18,7 @@ import {
   deliveryGenderLabelAr,
   findDeliveryCity,
 } from '../../common/delivery/delivery-zones';
+import { resolveVariantImageUrl } from '../../common/variant-image';
 
 @Injectable()
 export class OrdersService {
@@ -89,7 +90,7 @@ export class OrdersService {
       ];
     }
 
-    return this.prisma.order.findMany({
+    const rows = await this.prisma.order.findMany({
       where,
       include: {
         customer: true,
@@ -114,6 +115,40 @@ export class OrdersService {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+    return this.enrichOrdersWithItemImages(rows);
+  }
+
+  private async enrichOrdersWithItemImages<
+    T extends { items: Array<{ variantId: string | null; imageUrl?: string | null }> },
+  >(orders: T[]): Promise<T[]> {
+    const variantIds = [
+      ...new Set(
+        orders.flatMap((o) =>
+          o.items.map((i) => i.variantId).filter((id): id is string => !!id),
+        ),
+      ),
+    ];
+    if (!variantIds.length) return orders;
+
+    const variants = await this.prisma.productVariant.findMany({
+      where: { id: { in: variantIds } },
+      include: {
+        product: { include: { images: { orderBy: { sortOrder: 'asc' } } } },
+      },
+    });
+    const imageByVariant = new Map(
+      variants.map((v) => [v.id, resolveVariantImageUrl(v)]),
+    );
+
+    return orders.map((o) => ({
+      ...o,
+      items: o.items.map((item) => ({
+        ...item,
+        imageUrl:
+          item.imageUrl ||
+          (item.variantId ? imageByVariant.get(item.variantId) || null : null),
+      })),
+    }));
   }
 
   async findOne(id: string) {
@@ -132,7 +167,8 @@ export class OrdersService {
       },
     });
     if (!order) throw new NotFoundException('الطلب غير موجود');
-    return order;
+    const [enriched] = await this.enrichOrdersWithItemImages([order]);
+    return enriched;
   }
 
   async create(user: AuthUser, dto: CreateOrderDto) {
@@ -242,7 +278,7 @@ export class OrdersService {
         }
         const variant = await tx.productVariant.findUnique({
           where: { id: item.variantId },
-          include: { product: true },
+          include: { product: { include: { images: { orderBy: { sortOrder: 'asc' } } } } },
         });
         if (!variant || !variant.isActive) {
           throw new NotFoundException('منتج غير متوفر');
@@ -263,6 +299,7 @@ export class OrdersService {
             [variant.color, variant.size].filter(Boolean).join(' / ') ||
             null,
           sku: item.sku || variant.sku,
+          imageUrl: resolveVariantImageUrl(variant),
           quantity: item.quantity,
           unitPrice,
           discount,

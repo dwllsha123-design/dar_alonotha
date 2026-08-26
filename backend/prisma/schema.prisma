@@ -689,6 +689,7 @@ model OrderItem {
   productName String
   variantName String?
   sku         String?
+  imageUrl    String?
   quantity    Int
   unitPrice   Decimal
   discount    Decimal @default(0)

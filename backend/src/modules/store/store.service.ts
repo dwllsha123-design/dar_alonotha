@@ -22,6 +22,7 @@ import {
   findDeliveryCity,
   parseDeliveryGender,
 } from '../../common/delivery/delivery-zones';
+import { resolveVariantImageUrl } from '../../common/variant-image';
 import { OrderFulfillmentService } from '../delivery/order-fulfillment.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthService } from '../auth/auth.service';
@@ -739,7 +740,9 @@ export class StoreService {
       for (const line of dto.items) {
         const variant = await tx.productVariant.findUnique({
           where: { id: line.variantId },
-          include: { product: true },
+          include: {
+            product: { include: { images: { orderBy: { sortOrder: 'asc' } } } },
+          },
         });
         if (!variant || !variant.isActive || variant.product.status !== 'ACTIVE') {
           throw new NotFoundException('منتج غير متوفر');
@@ -771,6 +774,7 @@ export class StoreService {
             [variant.color, variant.size].filter(Boolean).join(' / ') ||
             null,
           sku: variant.sku,
+          imageUrl: resolveVariantImageUrl(variant),
           quantity: line.quantity,
           unitPrice,
           discount: 0,

@@ -1,6 +1,17 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, money, sourceLabel, statusBadgeClass, statusLabel } from '@/api/client';
+
+type OrderItem = {
+  id: string;
+  productName: string;
+  variantName?: string | null;
+  sku?: string | null;
+  quantity: number;
+  unitPrice: string | number;
+  lineTotal: string | number;
+  imageUrl?: string | null;
+};
 
 type Order = {
   id: string;
@@ -20,6 +31,7 @@ type Order = {
   shippingLabelUrl?: string | null;
   courier?: { id: string; name: string } | null;
   facebookPage?: { id: string; name: string; publicCode?: number } | null;
+  items?: OrderItem[];
   deliveries?: Array<{
     id: string;
     shippingSlipNo?: string | null;
@@ -59,6 +71,7 @@ export function OrdersPage() {
   const [source, setSource] = useState('');
   const [facebookPageId, setFacebookPageId] = useState('');
   const [q, setQ] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     api<Page[]>('/facebook-pages')
@@ -79,10 +92,9 @@ export function OrdersPage() {
 
   useEffect(() => {
     if (!focusId) return;
+    setExpandedId(focusId);
     const el = document.getElementById(`order-row-${focusId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [focusId, orders]);
 
   const filtered = useMemo(() => {
@@ -96,6 +108,7 @@ export function OrdersPage() {
         o.city,
         o.facebookPage?.name,
         orderAccuratessCode(o),
+        ...(o.items || []).map((i) => i.productName),
       ]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term)),
@@ -113,7 +126,10 @@ export function OrdersPage() {
       <div className="topbar">
         <div className="page-title">
           <h1>إدارة الطلبات</h1>
-          <p>من هنا تتابعين كل الطلبات (المتجر، فيسبوك، نقطة البيع): حالة الطلب، اسم الزبون، والمصدر. استخدمي الفلاتر للبحث، و«إضافة طلب جديد» لتسجيل طلب فيسبوك يدوياً.</p>
+          <p>
+            اضغطي على الطلب لعرض صور المنتجات — لتسهيل التجهيز والإخراج. الطلبات الجديدة والمؤكدة
+            تظهر بصور كل لون/مقاس.
+          </p>
         </div>
         <Link className="btn" to="/orders/new">
           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
@@ -186,7 +202,7 @@ export function OrdersPage() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="بحث برقم الطلب أو العميل أو Accuratess..."
+              placeholder="بحث برقم الطلب أو العميل أو المنتج..."
               style={{ minWidth: 220, height: 32, padding: '0 12px' }}
             />
           </div>
@@ -197,9 +213,7 @@ export function OrdersPage() {
             <thead>
               <tr>
                 <th>رقم الطلب</th>
-                <th>تتبع Accuratess</th>
-                <th>الصفحة</th>
-                <th>المصدر</th>
+                <th>المنتجات</th>
                 <th>العميل</th>
                 <th>المدينة</th>
                 <th>الحالة</th>
@@ -209,101 +223,178 @@ export function OrdersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((o) => (
-                <tr
-                  key={o.id}
-                  id={`order-row-${o.id}`}
-                  className={focusId === o.id ? 'row-focus' : undefined}
-                >
-                  <td style={{ fontWeight: 600, color: 'var(--primary-container)' }}>
-                    {o.orderNumber}
-                  </td>
-                  <td>
-                    {(() => {
-                      const code = orderAccuratessCode(o);
-                      const url =
-                        o.deliveries?.[0]?.trackingUrl || o.shippingLabelUrl || null;
-                      return (
-                        <div className="tracking-code">
-                          <span className="tracking-code-label">رقم الشحنة</span>
-                          <span className={`tracking-code-value${code ? '' : ' empty'}`}>
-                            {code || '—'}
-                          </span>
-                          {url ? (
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ fontSize: 12, marginTop: 2 }}
-                            >
-                              فتح التتبع
-                            </a>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td>
-                    {o.facebookPage?.name || '—'}
-                    {o.pagePublicCode || o.facebookPage?.publicCode ? (
-                      <div style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
-                        #{o.pagePublicCode || o.facebookPage?.publicCode}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td>{sourceLabel[o.source] || o.source}</td>
-                  <td>
-                    <div>{o.shippingName || '—'}</div>
-                    <div style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>
-                      {o.shippingPhone || ''}
-                    </div>
-                  </td>
-                  <td>{o.city || '—'}</td>
-                  <td>
-                    <span
-                      className={statusBadgeClass(
-                        o.deliveries?.[0]?.status === 'FAILED' ? 'FAILED' : o.status,
-                      )}
+              {filtered.map((o) => {
+                const open = expandedId === o.id;
+                const items = o.items || [];
+                return (
+                  <Fragment key={o.id}>
+                    <tr
+                      id={`order-row-${o.id}`}
+                      className={`${focusId === o.id ? 'row-focus ' : ''}order-row-click`.trim()}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setExpandedId(open ? null : o.id)}
                     >
-                      {o.deliveries?.[0]?.status === 'FAILED'
-                        ? statusLabel.FAILED
-                        : statusLabel[o.status] || o.status}
-                    </span>
-                  </td>
-                  <td>{money(o.totalAmount)}</td>
-                  <td style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>
-                    {new Date(o.createdAt).toLocaleString('ar-LY')}
-                  </td>
-                  <td>
-                    {o.fulfillmentType === 'INTERNAL' || o.deliveryType === 'INTERNAL'
-                      ? o.courierId || o.courier || o.deliveries?.[0]?.agentId
-                        ? (
-                          <Link
-                            className="btn secondary"
-                            to={`/delivery/print?orderIds=${o.id}`}
-                            target="_blank"
-                          >
-                            طباعة البوليصة
-                          </Link>
-                          )
-                        : (
-                          <span className="muted">عيّني مندوباً أولاً</span>
-                          )
-                      : (
+                      <td style={{ fontWeight: 600, color: 'var(--primary-container)' }}>
+                        {o.orderNumber}
+                        <div style={{ fontSize: 12, color: 'var(--on-surface-variant)', fontWeight: 400 }}>
+                          {sourceLabel[o.source] || o.source}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {items.slice(0, 4).map((item) =>
+                            item.imageUrl ? (
+                              <img
+                                key={item.id}
+                                src={item.imageUrl}
+                                alt={item.productName}
+                                title={`${item.productName} × ${item.quantity}`}
+                                style={{
+                                  width: 44,
+                                  height: 55,
+                                  objectFit: 'cover',
+                                  borderRadius: 6,
+                                  border: '1px solid var(--outline-variant)',
+                                }}
+                              />
+                            ) : (
+                              <span
+                                key={item.id}
+                                className="muted"
+                                style={{ fontSize: 12, maxWidth: 80 }}
+                                title={item.productName}
+                              >
+                                {item.productName.slice(0, 12)}
+                              </span>
+                            ),
+                          )}
+                          {items.length > 4 ? (
+                            <span className="muted" style={{ fontSize: 12 }}>
+                              +{items.length - 4}
+                            </span>
+                          ) : null}
+                          {!items.length ? <span className="muted">—</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <div>{o.shippingName || '—'}</div>
+                        <div style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>
+                          {o.shippingPhone || ''}
+                        </div>
+                      </td>
+                      <td>{o.city || '—'}</td>
+                      <td>
+                        <span
+                          className={statusBadgeClass(
+                            o.deliveries?.[0]?.status === 'FAILED' ? 'FAILED' : o.status,
+                          )}
+                        >
+                          {o.deliveries?.[0]?.status === 'FAILED'
+                            ? statusLabel.FAILED
+                            : statusLabel[o.status] || o.status}
+                        </span>
+                      </td>
+                      <td>{money(o.totalAmount)}</td>
+                      <td style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>
+                        {new Date(o.createdAt).toLocaleString('ar-LY')}
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
                         <Link
                           className="btn secondary"
                           to={`/delivery/print?orderIds=${o.id}`}
                           target="_blank"
                         >
-                          طباعة البوليصة
+                          طباعة
                         </Link>
-                      )}
-                  </td>
-                </tr>
-              ))}
+                      </td>
+                    </tr>
+                    {open ? (
+                      <tr>
+                        <td colSpan={8} style={{ background: 'var(--surface-container-low)' }}>
+                          <div style={{ padding: '12px 8px' }}>
+                            <strong style={{ display: 'block', marginBottom: 10 }}>
+                              تجهيز الطلب — {items.length} منتج
+                            </strong>
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                gap: 12,
+                              }}
+                            >
+                              {items.map((item) => (
+                                <div
+                                  key={item.id}
+                                  style={{
+                                    display: 'flex',
+                                    gap: 10,
+                                    padding: 10,
+                                    borderRadius: 10,
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--outline-variant)',
+                                  }}
+                                >
+                                  {item.imageUrl ? (
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={item.productName}
+                                      style={{
+                                        width: 72,
+                                        height: 90,
+                                        objectFit: 'cover',
+                                        borderRadius: 8,
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        width: 72,
+                                        height: 90,
+                                        borderRadius: 8,
+                                        background: 'var(--surface-container)',
+                                        display: 'grid',
+                                        placeItems: 'center',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      <span className="material-symbols-outlined">checkroom</span>
+                                    </div>
+                                  )}
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600 }}>{item.productName}</div>
+                                    {item.variantName ? (
+                                      <div className="muted" style={{ fontSize: 13 }}>
+                                        {item.variantName}
+                                      </div>
+                                    ) : null}
+                                    <div style={{ marginTop: 6, fontSize: 14 }}>
+                                      الكمية: <strong>{item.quantity}</strong>
+                                    </div>
+                                    {item.sku ? (
+                                      <div className="muted" style={{ fontSize: 12 }}>
+                                        SKU: {item.sku}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            {orderAccuratessCode(o) ? (
+                              <div className="muted" style={{ marginTop: 10, fontSize: 13 }}>
+                                تتبع Accuratess: {orderAccuratessCode(o)}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={10} className="empty">
+                  <td colSpan={8} className="empty">
                     لا توجد طلبات مطابقة
                   </td>
                 </tr>
