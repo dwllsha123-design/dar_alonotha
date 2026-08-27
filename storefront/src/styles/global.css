@@ -543,7 +543,7 @@ img { max-width: 100%; height: auto; display: block; background: transparent; }
   background: var(--gold-bright);
 }
 
-/* Hero — daralonotha.ly style (image + overlay CTA) */
+/* Hero — daralonotha.ly: 16:9, min-height 480px (upload 1920×1080) */
 .hero-ly {
   position: relative;
   width: 100%;
@@ -552,16 +552,10 @@ img { max-width: 100%; height: auto; display: block; background: transparent; }
 .hero-ly-media {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  max-height: 72vh;
+  aspect-ratio: 16 / 9;
+  min-height: 480px;
   overflow: hidden;
   background: var(--surface-low);
-}
-@media (min-width: 768px) {
-  .hero-ly-media {
-    aspect-ratio: 16 / 9;
-    max-height: min(72vh, 720px);
-  }
 }
 .hero-ly-slide {
   position: absolute;
