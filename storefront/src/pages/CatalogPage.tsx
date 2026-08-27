@@ -218,20 +218,28 @@ export function CategoriesPage() {
       <div className="cat-grid">
         {categories.map((c) => (
           <Link key={c.id} to={`/category/${c.slug}`} className="cat-tile">
-            <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+            <div className="cat-tile-media">
+              <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+            </div>
             <h3>{c.nameAr}</h3>
           </Link>
         ))}
         <Link to="/new" className="cat-tile">
-          <img src="/home/coming-soon.jpg" alt="وصل حديثاً" loading="lazy" decoding="async" />
+          <div className="cat-tile-media">
+            <img src="/home/coming-soon.jpg" alt="وصل حديثاً" loading="lazy" decoding="async" />
+          </div>
           <h3>وصل حديثاً</h3>
         </Link>
         <Link to="/offers" className="cat-tile offer-tile">
-          <h3>عروض خاصة</h3>
-          <p>اكتشفي أحدث التخفيضات</p>
+          <div className="cat-tile-media">
+            <h3>عروض خاصة</h3>
+            <p>اكتشفي أحدث التخفيضات</p>
+          </div>
         </Link>
         <Link to="/bestseller" className="cat-tile">
-          <img src="/home/product-kaftan-34.jpg" alt="الأكثر مبيعاً" loading="lazy" decoding="async" />
+          <div className="cat-tile-media">
+            <img src="/home/product-kaftan-34.jpg" alt="الأكثر مبيعاً" loading="lazy" decoding="async" />
+          </div>
           <h3>الأكثر مبيعاً</h3>
         </Link>
       </div>

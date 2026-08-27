@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { assertProductionEnv, isProduction } from './common/production-env';
 
@@ -26,7 +27,7 @@ async function bootstrap() {
 
   // Behind Railway/Nginx: upgrade plain HTTP when the edge marks the request as http
   if (isProduction()) {
-    app.use((req, res, next) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
       const proto = String(req.headers['x-forwarded-proto'] || '')
         .split(',')[0]
         .trim()
