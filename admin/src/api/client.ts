@@ -48,6 +48,12 @@ export type ApiUser = {
     isMain: boolean;
     warehouseId: string;
   } | null;
+  pagePortal?: {
+    id: string;
+    name: string;
+    username: string;
+    publicCode: number;
+  } | null;
 };
 
 type ApiResponse<T> = {

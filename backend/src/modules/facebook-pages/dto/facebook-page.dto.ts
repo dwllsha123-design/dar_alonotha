@@ -8,6 +8,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 import { FacebookPageStatus, PageMemberRole } from '@prisma/client';
 
@@ -104,7 +105,16 @@ export class AssignMemberDto {
 
 export class AssignEmployeesDto {
   @IsArray()
-  @ArrayMaxSize(3)
   @IsString({ each: true })
   userIds!: string[];
+}
+
+export class SetPageCredentialsDto {
+  @IsString()
+  @MaxLength(32)
+  username!: string;
+
+  @IsString()
+  @MinLength(6)
+  password!: string;
 }

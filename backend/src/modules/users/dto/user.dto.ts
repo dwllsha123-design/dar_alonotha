@@ -2,11 +2,13 @@ import {
   IsArray,
   IsEmail,
   IsEnum,
+  IsNumber,
   IsOptional,
   IsString,
+  Min,
   MinLength,
 } from 'class-validator';
-import { UserStatus } from '@prisma/client';
+import { EmploymentType, UserStatus } from '@prisma/client';
 
 export class CreateUserDto {
   @IsString()
@@ -27,6 +29,15 @@ export class CreateUserDto {
   @IsArray()
   @IsString({ each: true })
   roleCodes!: string[];
+
+  @IsOptional()
+  @IsEnum(EmploymentType)
+  employmentType?: EmploymentType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlySalary?: number;
 }
 
 export class UpdateUserDto {
@@ -50,6 +61,15 @@ export class UpdateUserDto {
   @IsArray()
   @IsString({ each: true })
   roleCodes?: string[];
+
+  @IsOptional()
+  @IsEnum(EmploymentType)
+  employmentType?: EmploymentType;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlySalary?: number;
 }
 
 export class MarketerRegisterDto {

@@ -12,6 +12,7 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { OrdersPage } from '@/features/orders/OrdersPage';
 import { NewFacebookOrderPage } from '@/features/orders/NewFacebookOrderPage';
 import { ProductsPage } from '@/features/products/ProductsPage';
+import { CategoriesPage } from '@/features/products/CategoriesPage';
 import { CustomersPage } from '@/features/customers/CustomersPage';
 import { InventoryPage } from '@/features/inventory/InventoryPage';
 import { FacebookPagesPage } from '@/features/marketing/FacebookPagesPage';
@@ -23,6 +24,7 @@ import { ReservationsPage } from '@/features/reservations/ReservationsPage';
 import { CommissionsPage } from '@/features/marketing/CommissionsPage';
 import { BannersPage } from '@/features/marketing/BannersPage';
 import { UsersPage } from '@/features/users/UsersPage';
+import { MyPayrollPage } from '@/features/users/MyPayrollPage';
 import { AuditPage } from '@/features/audit/AuditPage';
 import { RegisterMarketerPage } from '@/features/marketing/RegisterMarketerPage';
 import { DeliveryZonesPage } from '@/features/delivery/DeliveryZonesPage';
@@ -109,7 +111,7 @@ export default function App() {
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/new" element={<NewFacebookOrderPage />} />
           <Route path="products" element={<ProductsPage />} />
-          <Route path="categories" element={<Navigate to="/products?tab=categories" replace />} />
+          <Route path="categories" element={<CategoriesPage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="branches" element={<BranchesPage />} />
@@ -124,6 +126,7 @@ export default function App() {
           <Route path="delivery/zones" element={<DeliveryZonesPage />} />
           <Route path="banners" element={<BannersPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="my-payroll" element={<MyPayrollPage />} />
           <Route path="audit" element={<AuditPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

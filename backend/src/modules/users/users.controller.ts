@@ -8,6 +8,10 @@ import {
   UpdateUserDto,
 } from './dto/user.dto';
 import {
+  CreateSalaryPaymentDto,
+  UpdateSalaryPaymentStatusDto,
+} from './dto/payroll.dto';
+import {
   Public,
   RequirePermissions,
 } from '../../common/decorators/auth.decorators';
@@ -48,6 +52,36 @@ export class UsersController {
   @RequirePermissions(PERMISSIONS.USERS_MANAGE)
   pending() {
     return this.usersService.pendingMarketers();
+  }
+
+  @Get('payroll/me')
+  @ApiBearerAuth()
+  myPayroll(@CurrentUser() user: AuthUser) {
+    return this.usersService.myPayroll(user);
+  }
+
+  @Get('salary-payments')
+  @ApiBearerAuth()
+  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  salaryPayments() {
+    return this.usersService.listSalaryPayments();
+  }
+
+  @Post('salary-payments')
+  @ApiBearerAuth()
+  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  createSalaryPayment(@Body() dto: CreateSalaryPaymentDto) {
+    return this.usersService.createSalaryPayment(dto);
+  }
+
+  @Patch('salary-payments/:id')
+  @ApiBearerAuth()
+  @RequirePermissions(PERMISSIONS.USERS_MANAGE)
+  updateSalaryPayment(
+    @Param('id') id: string,
+    @Body() dto: UpdateSalaryPaymentStatusDto,
+  ) {
+    return this.usersService.updateSalaryPaymentStatus(id, dto);
   }
 
   @Post(':id/approve-marketer')

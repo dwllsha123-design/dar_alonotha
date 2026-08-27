@@ -23,6 +23,8 @@ type UserRow = {
   email?: string | null;
   phone?: string | null;
   status: string;
+  employmentType?: string;
+  monthlySalary?: string | number | null;
   roles: Array<{ role: { id: string; code: string; nameAr: string } }>;
   createdAt: string;
 };
@@ -60,6 +62,8 @@ export function UsersPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('Agent@12345');
   const [roleCodes, setRoleCodes] = useState<string[]>(['sales_agent']);
+  const [employmentType, setEmploymentType] = useState('COMMISSION');
+  const [monthlySalary, setMonthlySalary] = useState('');
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
 
   const staffRoles = useMemo(
@@ -103,6 +107,8 @@ export function UsersPage() {
           email: email || undefined,
           password,
           roleCodes,
+          employmentType,
+          monthlySalary: employmentType === 'SALARY' && monthlySalary ? Number(monthlySalary) : undefined,
         }),
       });
       setName('');
@@ -121,6 +127,31 @@ export function UsersPage() {
 
   async function reject(id: string) {
     await api(`/users/${id}/reject-marketer`, { method: 'POST', body: '{}' });
+    await load();
+  }
+
+  async function setEmployment(id: string, type: string, salary?: number) {
+    await api(`/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        employmentType: type,
+        monthlySalary: type === 'SALARY' ? salary : null,
+      }),
+    });
+    await load();
+  }
+
+  async function createSalaryRecord(userId: string, amount: number) {
+    const now = new Date();
+    await api('/users/salary-payments', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        amount,
+      }),
+    });
     await load();
   }
 
@@ -286,6 +317,25 @@ export function UsersPage() {
           <input value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
         <label>
+          نوع التوظيف
+          <select value={employmentType} onChange={(e) => setEmploymentType(e.target.value)}>
+            <option value="NONE">بدون</option>
+            <option value="SALARY">راتب شهري</option>
+            <option value="COMMISSION">عمولة بالقطعة</option>
+          </select>
+        </label>
+        {employmentType === 'SALARY' ? (
+          <label>
+            الراتب الشهري (د.ل)
+            <input
+              type="number"
+              min={0}
+              value={monthlySalary}
+              onChange={(e) => setMonthlySalary(e.target.value)}
+            />
+          </label>
+        ) : null}
+        <label>
           المسمى / الدور
           <select
             value={roleCodes[0] || ''}
@@ -333,6 +383,7 @@ export function UsersPage() {
               <th>الاسم</th>
               <th>الهاتف</th>
               <th>المسمى</th>
+              <th>التوظيف</th>
               <th>الحالة</th>
               <th></th>
             </tr>
@@ -357,6 +408,38 @@ export function UsersPage() {
                       </button>
                     ))}
                   </div>
+                </td>
+                <td>
+                  <select
+                    value={u.employmentType || 'NONE'}
+                    onChange={(e) =>
+                      setEmployment(
+                        u.id,
+                        e.target.value,
+                        e.target.value === 'SALARY' ? Number(u.monthlySalary || 0) : undefined,
+                      )
+                    }
+                    style={{ minWidth: 120 }}
+                  >
+                    <option value="NONE">بدون</option>
+                    <option value="SALARY">راتب</option>
+                    <option value="COMMISSION">عمولة</option>
+                  </select>
+                  {u.employmentType === 'SALARY' ? (
+                    <div style={{ marginTop: 4, fontSize: 12 }}>
+                      {u.monthlySalary ? `${u.monthlySalary} د.ل` : '—'}
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ marginInlineStart: 6, padding: '2px 6px', fontSize: 11 }}
+                        onClick={() =>
+                          createSalaryRecord(u.id, Number(u.monthlySalary || 0))
+                        }
+                      >
+                        راتب الشهر
+                      </button>
+                    </div>
+                  ) : null}
                 </td>
                 <td>{statusAr[u.status] || u.status}</td>
                 <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

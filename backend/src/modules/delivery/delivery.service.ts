@@ -25,6 +25,7 @@ import { AccuratessService } from './accuratess.service';
 import { extractAccuratessTracking } from './accuratess-tracking';
 import { CentralInventoryService } from '../inventory/services/central-inventory.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CommissionsService } from '../commissions/commissions.service';
 
 const orderPageSelect = {
   id: true,
@@ -40,6 +41,7 @@ export class DeliveryService {
     private readonly accuratess: AccuratessService,
     private readonly inventory: CentralInventoryService,
     private readonly notifications: NotificationsService,
+    private readonly commissions: CommissionsService,
   ) {}
 
   quote(city?: string, area?: string, gender?: string) {
@@ -651,6 +653,11 @@ export class DeliveryService {
           titleAr: 'تم التسليم',
           type: 'ORDER_DELIVERED',
         });
+        try {
+          await this.commissions.accrueOnDelivered(updated.order.id);
+        } catch {
+          /* ignore */
+        }
       }
       if (dto.status === 'FAILED') {
         await this.notifications.notifyOrderStakeholders(updated.order, {

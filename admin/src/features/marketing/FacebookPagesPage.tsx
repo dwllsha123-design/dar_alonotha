@@ -9,6 +9,8 @@ type Page = {
   pageId?: string | null;
   notes?: string | null;
   status: string;
+  username?: string | null;
+  hasCredentials?: boolean;
   referralLink?: string;
   shortUrl?: string;
   storefrontUrl?: string;
@@ -39,7 +41,11 @@ export function FacebookPagesPage() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [staffPageId, setStaffPageId] = useState('');
-  const [employeeIds, setEmployeeIds] = useState<string[]>([]);
+  const [memberUserId, setMemberUserId] = useState('');
+  const [memberRole, setMemberRole] = useState('AGENT');
+  const [credPageId, setCredPageId] = useState('');
+  const [pageUsername, setPageUsername] = useState('');
+  const [pagePassword, setPagePassword] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
   const [busy, setBusy] = useState(false);
@@ -165,7 +171,6 @@ export function FacebookPagesPage() {
       if (editingId === p.id) resetForm();
       if (staffPageId === p.id) {
         setStaffPageId('');
-        setEmployeeIds([]);
       }
       await load();
     } catch (err) {
@@ -175,32 +180,59 @@ export function FacebookPagesPage() {
 
   function openStaff(p: Page) {
     setStaffPageId(p.id);
-    setEmployeeIds(p.employees.map((e) => e.user.id).slice(0, 3));
+    setMemberUserId('');
+    setMemberRole('AGENT');
   }
 
-  function toggleEmployee(id: string) {
-    setEmployeeIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 3) return prev;
-      return [...prev, id];
-    });
+  function openCredentials(p: Page) {
+    setCredPageId(p.id);
+    setPageUsername(p.username || '');
+    setPagePassword('');
   }
 
-  async function saveStaff(e: FormEvent) {
+  async function saveCredentials(e: FormEvent) {
     e.preventDefault();
-    if (!staffPageId) return;
+    if (!credPageId || !pageUsername.trim() || !pagePassword.trim()) {
+      setError('أدخلي اسم المستخدم وكلمة المرور للصفحة');
+      return;
+    }
+    setBusy(true);
     setError('');
     try {
-      await api(`/facebook-pages/${staffPageId}/employees`, {
+      await api(`/facebook-pages/${credPageId}/credentials`, {
         method: 'PUT',
-        body: JSON.stringify({ userIds: employeeIds.slice(0, 3) }),
+        body: JSON.stringify({ username: pageUsername.trim(), password: pagePassword }),
       });
-      setStaffPageId('');
-      setEmployeeIds([]);
+      setCredPageId('');
+      setPagePassword('');
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'فشل التعيين');
+      setError(err instanceof Error ? err.message : 'فشل حفظ بيانات الدخول');
+    } finally {
+      setBusy(false);
     }
+  }
+
+  async function addMember(e: FormEvent) {
+    e.preventDefault();
+    if (!staffPageId || !memberUserId) return;
+    setError('');
+    try {
+      await api(`/facebook-pages/${staffPageId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ userId: memberUserId, role: memberRole }),
+      });
+      setMemberUserId('');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل إضافة الموظف');
+    }
+  }
+
+  async function removeMember(pageId: string, userId: string) {
+    if (!confirm('إزالة هذا الموظف من الصفحة؟')) return;
+    await api(`/facebook-pages/${pageId}/members/${userId}`, { method: 'DELETE', body: '{}' });
+    await load();
   }
 
   async function copy(text: string, key: string) {
@@ -267,41 +299,103 @@ export function FacebookPagesPage() {
         </div>
       </form>
 
-      {staffPage ? (
-        <form className="panel stack" onSubmit={saveStaff}>
-          <strong>تعيين موظفين لـ {staffPage.name}</strong>
-          <p className="muted" style={{ margin: 0 }}>
-            اختاري حتى 3 موظفين يظهرون مع هذه الصفحة. لكل موظف رمز ورابط خاص إن كان مسوّقاً.
-          </p>
-          <div className="form-grid two">
-            {users.map((u) => (
-              <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={employeeIds.includes(u.id)}
-                  onChange={() => toggleEmployee(u.id)}
-                />
-                {u.name}
-              </label>
-            ))}
-            {!users.length ? <div className="muted">لا يوجد موظفون بعد — أضيفيهم من صفحة المستخدمون</div> : null}
+      {credPageId ? (
+        <form className="panel form-grid two" onSubmit={saveCredentials}>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <strong>
+              بيانات دخول الصفحة — {pages.find((x) => x.id === credPageId)?.name || ''}
+            </strong>
+            <p className="muted" style={{ margin: '6px 0 0' }}>
+              كل صفحة لها اسم مستخدم وكلمة مرور خاصة للدخول إلى لوحة التحكم.
+            </p>
           </div>
+          <label>
+            اسم المستخدم
+            <input
+              value={pageUsername}
+              onChange={(e) => setPageUsername(e.target.value)}
+              placeholder="page_lavina"
+              required
+              dir="ltr"
+            />
+          </label>
+          <label>
+            كلمة المرور
+            <input
+              type="password"
+              value={pagePassword}
+              onChange={(e) => setPagePassword(e.target.value)}
+              required
+            />
+          </label>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button className="btn secondary" type="submit">
-              حفظ الموظفين
+            <button className="btn" type="submit" disabled={busy}>
+              حفظ بيانات الدخول
             </button>
-            <button
-              className="btn ghost"
-              type="button"
-              onClick={() => {
-                setStaffPageId('');
-                setEmployeeIds([]);
-              }}
-            >
+            <button className="btn ghost" type="button" onClick={() => setCredPageId('')}>
               إلغاء
             </button>
           </div>
         </form>
+      ) : null}
+
+      {staffPage ? (
+        <div className="panel stack">
+          <strong>موظفو صفحة {staffPage.name}</strong>
+          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+            {staffPage.employees.map((e) => (
+              <li key={e.user.id} style={{ marginBottom: 6 }}>
+                {e.user.name} — {e.role}
+                <button
+                  type="button"
+                  className="btn ghost"
+                  style={{ marginInlineStart: 8, padding: '2px 8px', fontSize: 12 }}
+                  onClick={() => removeMember(staffPage.id, e.user.id)}
+                >
+                  إزالة
+                </button>
+              </li>
+            ))}
+            {!staffPage.employees.length ? (
+              <li className="muted">لا يوجد موظفون بعد</li>
+            ) : null}
+          </ul>
+          <form className="form-grid two" onSubmit={addMember}>
+            <label>
+              إضافة موظف
+              <select value={memberUserId} onChange={(e) => setMemberUserId(e.target.value)} required>
+                <option value="">— اختاري —</option>
+                {users
+                  .filter((u) => !staffPage.employees.some((e) => e.user.id === u.id))
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              الدور
+              <select value={memberRole} onChange={(e) => setMemberRole(e.target.value)}>
+                <option value="AGENT">مسوّق</option>
+                <option value="ADMIN">أدمن</option>
+                <option value="MANAGER">مدير</option>
+              </select>
+            </label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'end' }}>
+              <button className="btn secondary" type="submit">
+                إضافة
+              </button>
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={() => setStaffPageId('')}
+              >
+                إغلاق
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
 
       {shipPageId ? (
@@ -384,6 +478,9 @@ export function FacebookPagesPage() {
                 </button>
                 <button className="btn ghost" type="button" onClick={() => openStaff(p)}>
                   الموظفون
+                </button>
+                <button className="btn ghost" type="button" onClick={() => openCredentials(p)}>
+                  {p.hasCredentials ? 'تعديل الدخول' : 'بيانات الدخول'}
                 </button>
                 <button className="btn ghost" type="button" onClick={() => openShipping(p)}>
                   حساب المعيار

@@ -7,6 +7,7 @@ import {
   CreateFacebookPageDto,
   UpdateFacebookPageDto,
   UpsertShippingAccountDto,
+  SetPageCredentialsDto,
 } from './dto/facebook-page.dto';
 import { RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PERMISSIONS } from '../../common/permissions';
@@ -55,6 +56,12 @@ export class FacebookPagesController {
   @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.facebookPagesService.removeMember(id, userId);
+  }
+
+  @Put(':id/credentials')
+  @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
+  setCredentials(@Param('id') id: string, @Body() dto: SetPageCredentialsDto) {
+    return this.facebookPagesService.setCredentials(id, dto);
   }
 
   @Put(':id/employees')

@@ -18,6 +18,17 @@ enum UserStatus {
   SUSPENDED
 }
 
+enum EmploymentType {
+  NONE
+  SALARY
+  COMMISSION
+}
+
+enum SalaryPaymentStatus {
+  PENDING
+  PAID
+}
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -155,19 +166,24 @@ model User {
   passwordHash String
   status       UserStatus @default(ACTIVE)
   locale       String     @default("ar")
+  employmentType EmploymentType @default(NONE)
+  monthlySalary  Decimal?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   roles              UserRole[]
   facebookPages      FacebookPageEmployee[]
   managedPages       FacebookPage[]         @relation("PageManager")
+  portalPage         FacebookPage?          @relation("PagePortalUser")
   salesOrders        Order[]                @relation("SalesAgentOrders")
   cashierOrders      Order[]                @relation("CashierOrders")
+  createdOrders      Order[]                @relation("CreatedByOrders")
   warehouseMovements InventoryMovement[]    @relation("MovementBy")
   assignedDeliveries Delivery[]             @relation("DeliveryAgent")
   courierProfile     Courier?
   reservations       StockReservation[]     @relation("AgentReservations")
   commissions        CommissionEntry[]      @relation("AgentCommissions")
+  salaryPayments     SalaryPayment[]
   notifications      Notification[]         @relation("UserNotifications")
   auditLogs          AuditLog[]
   sessions           AuthSession[]
@@ -521,11 +537,16 @@ model FacebookPage {
   pageId     String?            @unique
   status     FacebookPageStatus @default(ACTIVE)
   managerId  String?
+  /// Dedicated login for the page (like branch POS accounts)
+  username     String?          @unique
+  passwordHash String?          @map("password_hash")
+  portalUserId String?          @unique
   notes      String?
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
 
   manager         User?                     @relation("PageManager", fields: [managerId], references: [id])
+  portalUser      User?                     @relation("PagePortalUser", fields: [portalUserId], references: [id])
   employees       FacebookPageEmployee[]
   orders          Order[]
   reservations    StockReservation[]
@@ -608,6 +629,7 @@ model Order {
   customerId      String?
   salesAgentId    String?
   cashierId       String?
+  createdById     String?
   facebookPageId  String?
   warehouseId     String?
   branchId        String?
@@ -657,6 +679,7 @@ model Order {
   customer      Customer?      @relation(fields: [customerId], references: [id])
   salesAgent    User?          @relation("SalesAgentOrders", fields: [salesAgentId], references: [id])
   cashier       User?          @relation("CashierOrders", fields: [cashierId], references: [id])
+  createdBy     User?          @relation("CreatedByOrders", fields: [createdById], references: [id])
   facebookPage  FacebookPage?  @relation(fields: [facebookPageId], references: [id])
   warehouse     Warehouse?     @relation(fields: [warehouseId], references: [id])
   branch        Branch?        @relation(fields: [branchId], references: [id])
@@ -672,6 +695,7 @@ model Order {
   @@index([createdAt])
   @@index([customerId])
   @@index([salesAgentId])
+  @@index([createdById])
   @@index([facebookPageId])
   @@index([orderBarcode])
   @@index([pagePublicCode, agentPublicCode])
@@ -885,6 +909,7 @@ model CommissionEntry {
   pageId        String?
   ruleId        String?
   orderTotal    Decimal
+  itemCount     Int              @default(0)
   ratePercent   Decimal          @default(0)
   amount        Decimal
   currency      String           @default("LYD")
@@ -901,6 +926,25 @@ model CommissionEntry {
   @@index([agentUserId, status])
   @@index([createdAt])
   @@map("commission_entries")
+}
+
+model SalaryPayment {
+  id        String              @id @default(cuid())
+  userId    String
+  year      Int
+  month     Int
+  amount    Decimal
+  status    SalaryPaymentStatus @default(PENDING)
+  paidAt    DateTime?
+  notes     String?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@index([userId, status])
+  @@map("salary_payments")
 }
 
 // ─── Marketing ───────────────────────────────────────────

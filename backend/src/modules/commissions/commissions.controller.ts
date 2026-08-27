@@ -5,6 +5,7 @@ import {
   CreateCommissionRuleDto,
   UpdateCommissionStatusDto,
 } from './dto/commission.dto';
+import { UpdatePerPieceRateDto } from './dto/per-piece.dto';
 import { RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PERMISSIONS } from '../../common/permissions';
 import {
@@ -28,6 +29,18 @@ export class CommissionsController {
   @RequirePermissions(PERMISSIONS.COMMISSIONS_MANAGE)
   createRule(@Body() dto: CreateCommissionRuleDto) {
     return this.commissionsService.createRule(dto);
+  }
+
+  @Get('per-piece-rate')
+  @RequirePermissions(PERMISSIONS.COMMISSIONS_VIEW)
+  perPieceRate() {
+    return this.commissionsService.getPerPieceRate().then((amount) => ({ amount }));
+  }
+
+  @Patch('per-piece-rate')
+  @RequirePermissions(PERMISSIONS.COMMISSIONS_MANAGE)
+  setPerPieceRate(@Body() dto: UpdatePerPieceRateDto) {
+    return this.commissionsService.setPerPieceRate(dto.amount);
   }
 
   @Get('entries')

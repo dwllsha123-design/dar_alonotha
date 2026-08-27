@@ -95,6 +95,7 @@ export class OrdersService {
       include: {
         customer: true,
         salesAgent: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
         facebookPage: true,
         items: true,
         deliveries: {
@@ -158,6 +159,7 @@ export class OrdersService {
         customer: true,
         salesAgent: { select: { id: true, name: true, phone: true } },
         cashier: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true, phone: true } },
         facebookPage: true,
         warehouse: true,
         items: true,
@@ -349,6 +351,7 @@ export class OrdersService {
           customerId,
           salesAgentId,
           cashierId: dto.source === 'POS' ? user.id : undefined,
+          createdById: user.id,
           facebookPageId,
           warehouseId,
           pagePublicCode,
@@ -434,16 +437,6 @@ export class OrdersService {
           },
         },
       });
-
-      if (salesAgentId) {
-        await this.commissions.accrueForOrder(tx, {
-          orderId: order.id,
-          orderTotal: totalAmount,
-          source: dto.source,
-          agentUserId: salesAgentId,
-          pageId: facebookPageId,
-        });
-      }
 
       const created = await tx.order.findUniqueOrThrow({
         where: { id: order.id },
@@ -587,6 +580,11 @@ export class OrdersService {
         titleAr: 'تم التسليم',
         type: 'ORDER_DELIVERED',
       });
+      try {
+        await this.commissions.accrueOnDelivered(id);
+      } catch {
+        /* لا نُفشل تحديث الحالة */
+      }
     }
 
     if (dto.status === 'CANCELLED' && order.status !== 'CANCELLED') {

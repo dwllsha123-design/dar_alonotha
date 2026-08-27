@@ -12,7 +12,7 @@ export class CreateCommissionRuleDto {
 
   @IsOptional()
   @IsString()
-  type?: 'PERCENT' | 'FIXED';
+  type?: 'PERCENT' | 'FIXED' | 'PER_ITEM';
 
   @IsOptional()
   @IsNumber()

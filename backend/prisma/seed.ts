@@ -416,13 +416,19 @@ async function main() {
     await prisma.commissionRule.create({
       data: {
         nameAr: 'عمولة مندوبي فيسبوك الافتراضية',
-        type: 'PERCENT',
-        ratePercent: 5,
+        type: 'PER_ITEM',
+        fixedAmount: 5,
         source: 'FACEBOOK',
         isActive: true,
       },
     });
   }
+
+  await prisma.setting.upsert({
+    where: { key: 'commission.per_piece_lyd' },
+    create: { key: 'commission.per_piece_lyd', value: '5', group: 'commissions' },
+    update: {},
+  });
 
   const categoryDefs = [
     { nameAr: 'لانجري', nameEn: 'Lingerie', slug: 'lingerie', sortOrder: 1 },

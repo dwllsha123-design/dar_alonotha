@@ -11,9 +11,12 @@ import { ConfigService } from '@nestjs/config';
 import {
   AssignMemberDto,
   CreateFacebookPageDto,
+  SetPageCredentialsDto,
   UpdateFacebookPageDto,
   UpsertShippingAccountDto,
 } from './dto/facebook-page.dto';
+import * as bcrypt from 'bcrypt';
+import { ROLE_CODES } from '../../common/permissions';
 
 @Injectable()
 export class FacebookPagesService {
@@ -84,6 +87,8 @@ export class FacebookPagesService {
       const token = p.shippingAccount?.apiToken;
       return {
         ...p,
+        username: p.username,
+        hasCredentials: Boolean(p.username && p.passwordHash),
         ...links,
         shippingAccount: p.shippingAccount
           ? {
@@ -223,13 +228,75 @@ export class FacebookPagesService {
 
   /** Legacy helper kept for older admin UI */
   async assignEmployees(id: string, userIds: string[]) {
-    if (userIds.length > 3) {
-      throw new BadRequestException('الحد الأقصى 3 موظفين في التعيين السريع');
-    }
     for (const userId of userIds) {
       await this.assignMember(id, { userId, role: PageMemberRole.AGENT });
     }
     return this.findOne(id);
+  }
+
+  async setCredentials(pageId: string, dto: SetPageCredentialsDto) {
+    const page = await this.prisma.facebookPage.findUnique({ where: { id: pageId } });
+    if (!page) throw new NotFoundException('الصفحة غير موجودة');
+
+    const username = dto.username.trim().toLowerCase();
+    if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+      throw new BadRequestException(
+        'اسم المستخدم بالإنجليزية فقط (حروف وأرقام و . _ -)',
+      );
+    }
+
+    const taken = await this.prisma.facebookPage.findFirst({
+      where: { username, NOT: { id: pageId } },
+    });
+    if (taken) throw new BadRequestException('اسم المستخدم مستخدم لصفحة أخرى');
+
+    const branchTaken = await this.prisma.branch.findUnique({ where: { username } });
+    if (branchTaken) throw new BadRequestException('اسم المستخدم مستخدم لفرع آخر');
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const salesRole = await this.prisma.role.findUnique({
+      where: { code: ROLE_CODES.SALES_AGENT },
+    });
+    if (!salesRole) throw new BadRequestException('دور المبيعات غير مُعرّف');
+
+    return this.prisma.$transaction(async (tx) => {
+      let portalUserId = page.portalUserId;
+
+      if (!portalUserId) {
+        const portalUser = await tx.user.create({
+          data: {
+            name: `صفحة ${page.name}`,
+            email: `page_${username}@page.local`,
+            passwordHash,
+            status: 'ACTIVE',
+            roles: { create: [{ roleId: salesRole.id }] },
+          },
+        });
+        portalUserId = portalUser.id;
+      } else {
+        await tx.user.update({
+          where: { id: portalUserId },
+          data: { passwordHash },
+        });
+      }
+
+      await tx.facebookPage.update({
+        where: { id: pageId },
+        data: { username, passwordHash, portalUserId },
+      });
+
+      await tx.facebookPageEmployee.upsert({
+        where: { pageId_userId: { pageId, userId: portalUserId } },
+        create: {
+          pageId,
+          userId: portalUserId,
+          role: PageMemberRole.MANAGER,
+        },
+        update: { role: PageMemberRole.MANAGER },
+      });
+
+      return this.findOne(pageId);
+    });
   }
 
   async remove(id: string) {

@@ -10,6 +10,10 @@ import {
   MarketerRegisterDto,
   UpdateUserDto,
 } from './dto/user.dto';
+import {
+  CreateSalaryPaymentDto,
+  UpdateSalaryPaymentStatusDto,
+} from './dto/payroll.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { ROLE_CODES } from '../../common/permissions';
@@ -31,6 +35,8 @@ export class UsersService {
         phone: true,
         status: true,
         locale: true,
+        employmentType: true,
+        monthlySalary: true,
         createdAt: true,
         roles: { include: { role: true } },
       },
@@ -98,6 +104,8 @@ export class UsersService {
         email: dto.email,
         phone: dto.phone,
         passwordHash,
+        employmentType: dto.employmentType ?? 'NONE',
+        monthlySalary: dto.monthlySalary,
         roles: {
           create: roles.map((r) => ({ roleId: r.id })),
         },
@@ -108,6 +116,8 @@ export class UsersService {
         email: true,
         phone: true,
         status: true,
+        employmentType: true,
+        monthlySalary: true,
         roles: { include: { role: true } },
       },
     });
@@ -265,6 +275,8 @@ export class UsersService {
           email: dto.email,
           phone: dto.phone,
           status: dto.status,
+          employmentType: dto.employmentType,
+          monthlySalary: dto.monthlySalary,
         },
         select: {
           id: true,
@@ -272,9 +284,101 @@ export class UsersService {
           email: true,
           phone: true,
           status: true,
+          employmentType: true,
+          monthlySalary: true,
           roles: { include: { role: true } },
         },
       });
+    });
+  }
+
+  async myPayroll(user: AuthUser) {
+    const [salaries, commissions] = await Promise.all([
+      this.prisma.salaryPayment.findMany({
+        where: { userId: user.id },
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        take: 24,
+      }),
+      this.prisma.commissionEntry.findMany({
+        where: { agentUserId: user.id },
+        include: {
+          order: {
+            select: {
+              orderNumber: true,
+              totalAmount: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+    ]);
+    const profile = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        employmentType: true,
+        monthlySalary: true,
+        name: true,
+      },
+    });
+    return { profile, salaries, commissions };
+  }
+
+  listSalaryPayments(userId?: string) {
+    return this.prisma.salaryPayment.findMany({
+      where: userId ? { userId } : undefined,
+      include: { user: { select: { id: true, name: true, phone: true } } },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      take: 200,
+    });
+  }
+
+  async createSalaryPayment(dto: CreateSalaryPaymentDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user) throw new NotFoundException('المستخدم غير موجود');
+    if (user.employmentType !== 'SALARY') {
+      throw new BadRequestException('هذا الموظف ليس براتب شهري');
+    }
+    const amount = dto.amount ?? Number(user.monthlySalary || 0);
+    if (amount <= 0) {
+      throw new BadRequestException('حدّد الراتب الشهري للموظف أولاً');
+    }
+    return this.prisma.salaryPayment.upsert({
+      where: {
+        userId_year_month: {
+          userId: dto.userId,
+          year: dto.year,
+          month: dto.month,
+        },
+      },
+      create: {
+        userId: dto.userId,
+        year: dto.year,
+        month: dto.month,
+        amount,
+        notes: dto.notes,
+      },
+      update: {
+        amount,
+        notes: dto.notes,
+      },
+      include: { user: { select: { id: true, name: true } } },
+    });
+  }
+
+  async updateSalaryPaymentStatus(
+    id: string,
+    dto: UpdateSalaryPaymentStatusDto,
+  ) {
+    const row = await this.prisma.salaryPayment.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('سجل الراتب غير موجود');
+    return this.prisma.salaryPayment.update({
+      where: { id },
+      data: {
+        status: dto.status,
+        paidAt: dto.status === 'PAID' ? new Date() : row.paidAt,
+      },
     });
   }
 }

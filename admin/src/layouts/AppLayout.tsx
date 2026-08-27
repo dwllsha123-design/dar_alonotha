@@ -15,7 +15,8 @@ const links: NavItem[] = [
   { to: '/', label: 'الرئيسية', icon: 'dashboard', perm: 'reports.view', hint: 'ملخص المبيعات وتنبيهات المخزون' },
   { to: '/orders', label: 'الطلبات', icon: 'shopping_cart', perm: 'orders.view', hint: 'متابعة طلبات الموقع وفيسبوك والمحل' },
   { to: '/branches', label: 'الفروع', icon: 'storefront', perm: 'branches.manage', hint: 'حسابات الفروع ومخزونها وتحويل البضائع' },
-  { to: '/products', label: 'المنتجات', icon: 'inventory_2', perm: 'products.view', hint: 'إضافة المنتجات والصور والمقاسات والباركود والتصنيفات' },
+  { to: '/products', label: 'المنتجات', icon: 'inventory_2', perm: 'products.view', hint: 'إضافة المنتجات والصور والمقاسات والباركود' },
+  { to: '/categories', label: 'الفئات والأصناف', icon: 'category', perm: 'products.view', hint: 'فئات المتجر وأصنافها الفرعية' },
   { to: '/inventory', label: 'المخزون', icon: 'storage', perm: 'inventory.view', hint: 'إدخال الكميات ومتابعة المتوفر' },
   { to: '/customers', label: 'العملاء', icon: 'group', perm: 'customers.view', hint: 'بيانات الزبائن وطلباتهم السابقة' },
   { to: '/delivery', label: 'التوصيل', icon: 'local_shipping', perm: 'orders.view', hint: 'تعيين مندوب أو شركة توصيل وطباعة البوليصة' },
@@ -23,6 +24,7 @@ const links: NavItem[] = [
   { to: '/delivery/zones', label: 'مناطق طرابلس', icon: 'map', perm: 'delivery.assign', hint: 'مدن ومناطق طرابلس وأسعار التوصيل الرجالي والنسائي' },
   { to: '/delivery/company', label: 'طلبات شركة التوصيل', icon: 'local_shipping', perm: 'orders.view', hint: 'متابعة حالات Accuratess لحظياً' },
   { to: '/commissions', label: 'العمولات', icon: 'payments', perm: 'commissions.view', hint: 'عمولة المسوّقين والمندوبين' },
+  { to: '/my-payroll', label: 'راتبي', icon: 'account_balance_wallet', perm: '__any__', hint: 'راتبك الشهري وعمولاتك' },
   { to: '/facebook-pages', label: 'الصفحات', icon: 'web', perm: 'facebook_pages.view', hint: 'صفحات فيسبوك وروابط المتجر الخاصة بها' },
   { to: '/banners', label: 'صور المتجر', icon: 'view_carousel', perm: 'marketing.manage', hint: 'سلايدر الرئيسية ولافتات العروض' },
   { to: '/users', label: 'المستخدمون', icon: 'manage_accounts', perm: 'users.manage', hint: 'الموظفون وصلاحيات كل وظيفة' },
@@ -169,7 +171,7 @@ export function AppLayout() {
 
         <nav className="nav">
           {links
-            .filter((l) => hasPermission(l.perm))
+            .filter((l) => l.perm === '__any__' || hasPermission(l.perm))
             .map((l) => (
               <NavLink
                 key={l.to}

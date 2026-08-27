@@ -9,6 +9,13 @@ export type BranchSession = {
   warehouseId: string;
 };
 
+export type PagePortalSession = {
+  id: string;
+  name: string;
+  username: string;
+  publicCode: number;
+};
+
 export type AuthUser = {
   id: string;
   email?: string | null;
@@ -17,6 +24,7 @@ export type AuthUser = {
   roles: string[];
   permissions: string[];
   branch?: BranchSession | null;
+  pagePortal?: PagePortalSession | null;
 };
 
 export const CurrentUser = createParamDecorator(

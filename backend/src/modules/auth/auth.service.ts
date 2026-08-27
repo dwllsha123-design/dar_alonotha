@@ -14,7 +14,7 @@ import {
   SessionMeta,
 } from '../../common/client-context';
 import { ClientPlatform } from '@prisma/client';
-import { BranchSession } from '../../common/decorators/current-user.decorator';
+import { BranchSession, PagePortalSession } from '../../common/decorators/current-user.decorator';
 
 type UserWithRoles = {
   id: string;
@@ -25,7 +25,23 @@ type UserWithRoles = {
   roles: string[];
   permissions: string[];
   branch: BranchSession | null;
+  pagePortal: PagePortalSession | null;
 };
+
+function toPagePortalSession(page: {
+  id: string;
+  name: string;
+  username: string | null;
+  publicCode: number;
+} | null | undefined): PagePortalSession | null {
+  if (!page?.username) return null;
+  return {
+    id: page.id,
+    name: page.name,
+    username: page.username,
+    publicCode: page.publicCode,
+  };
+}
 
 function toBranchSession(branch: {
   id: string;
@@ -57,9 +73,13 @@ export class AuthService {
   async login(dto: LoginDto, meta?: SessionMeta) {
     const identifier = (dto.identifier || dto.email || dto.phone || '').trim();
     const branchUserId = await this.tryBranchLogin(identifier, dto.password);
-    const user = branchUserId
+    const pageUserId = branchUserId
+      ? null
+      : await this.tryPageLogin(identifier, dto.password);
+    const portalUserId = branchUserId ?? pageUserId;
+    const user = portalUserId
       ? await this.prisma.user.findUnique({
-          where: { id: branchUserId },
+          where: { id: portalUserId },
           include: {
             roles: {
               include: {
@@ -83,7 +103,7 @@ export class AuthService {
       throw new UnauthorizedException('الحساب غير مفعّل');
     }
 
-    if (!branchUserId) {
+    if (!branchUserId && !pageUserId) {
       const valid = await bcrypt.compare(dto.password, user.passwordHash);
       if (!valid) {
         throw new UnauthorizedException('بيانات الدخول غير صحيحة');
@@ -219,6 +239,7 @@ export class AuthService {
         roles: profile.roles,
         permissions: profile.permissions,
         branch: profile.branch,
+        pagePortal: profile.pagePortal,
       },
     };
   }
@@ -306,6 +327,7 @@ export class AuthService {
       })),
       courier: await this.safeCourier(user.id),
       branch: await this.branchForUser(user.id),
+      pagePortal: await this.pagePortalForUser(user.id),
     };
   }
 
@@ -329,6 +351,41 @@ export class AuthService {
       return payload.sub;
     } catch {
       return undefined;
+    }
+  }
+
+  private async tryPageLogin(identifier: string, password: string) {
+    if (!identifier) return null;
+    const lowered = identifier.toLowerCase();
+    try {
+      const page = await this.prisma.facebookPage.findFirst({
+        where: {
+          status: 'ACTIVE',
+          username: { not: null },
+          OR: [{ username: identifier }, { username: lowered }],
+        },
+      });
+      if (!page?.passwordHash || !page.portalUserId) return null;
+      const valid = await bcrypt.compare(password, page.passwordHash);
+      if (!valid) {
+        throw new UnauthorizedException('بيانات الدخول غير صحيحة');
+      }
+      return page.portalUserId;
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      return null;
+    }
+  }
+
+  private async pagePortalForUser(userId: string) {
+    try {
+      const page = await this.prisma.facebookPage.findFirst({
+        where: { portalUserId: userId, status: 'ACTIVE' },
+        select: { id: true, name: true, username: true, publicCode: true },
+      });
+      return toPagePortalSession(page);
+    } catch {
+      return null;
     }
   }
 
@@ -372,6 +429,7 @@ export class AuthService {
         ),
       ],
       branch: await this.branchForUser(user.id),
+      pagePortal: await this.pagePortalForUser(user.id),
     };
   }
 

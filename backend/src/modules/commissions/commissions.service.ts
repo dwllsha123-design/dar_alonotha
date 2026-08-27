@@ -7,6 +7,8 @@ import {
   UpdateCommissionStatusDto,
 } from './dto/commission.dto';
 
+export const COMMISSION_PER_PIECE_KEY = 'commission.per_piece_lyd';
+
 @Injectable()
 export class CommissionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -21,7 +23,7 @@ export class CommissionsService {
     return this.prisma.commissionRule.create({
       data: {
         nameAr: dto.nameAr,
-        type: dto.type ?? 'PERCENT',
+        type: dto.type ?? 'PER_ITEM',
         ratePercent: dto.ratePercent ?? 0,
         fixedAmount: dto.fixedAmount ?? 0,
         pageId: dto.pageId,
@@ -29,6 +31,25 @@ export class CommissionsService {
         source: dto.source ?? 'FACEBOOK',
         isActive: dto.isActive ?? true,
       },
+    });
+  }
+
+  async getPerPieceRate() {
+    const row = await this.prisma.setting.findUnique({
+      where: { key: COMMISSION_PER_PIECE_KEY },
+    });
+    return row ? Number(row.value) : 5;
+  }
+
+  async setPerPieceRate(amount: number) {
+    return this.prisma.setting.upsert({
+      where: { key: COMMISSION_PER_PIECE_KEY },
+      create: {
+        key: COMMISSION_PER_PIECE_KEY,
+        value: String(amount),
+        group: 'commissions',
+      },
+      update: { value: String(amount) },
     });
   }
 
@@ -72,7 +93,41 @@ export class CommissionsService {
   }
 
   /**
-   * Accrue commission for an order inside an existing transaction when possible.
+   * Accrue commission when an order is delivered (per successful piece sold).
+   */
+  async accrueOnDelivered(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true },
+    });
+    if (!order) return null;
+
+    const agentUserId = order.salesAgentId ?? order.createdById;
+    if (!agentUserId) return null;
+
+    const agent = await this.prisma.user.findUnique({
+      where: { id: agentUserId },
+      select: { id: true, employmentType: true },
+    });
+    if (!agent || agent.employmentType !== 'COMMISSION') return null;
+
+    const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+    if (itemCount <= 0) return null;
+
+    return this.prisma.$transaction(async (tx) =>
+      this.accrueForOrder(tx, {
+        orderId: order.id,
+        orderTotal: Number(order.totalAmount),
+        source: order.source,
+        agentUserId,
+        pageId: order.facebookPageId,
+        itemCount,
+      }),
+    );
+  }
+
+  /**
+   * Accrue commission inside an existing transaction.
    */
   async accrueForOrder(
     tx: Prisma.TransactionClient,
@@ -82,10 +137,18 @@ export class CommissionsService {
       source: string;
       agentUserId?: string | null;
       pageId?: string | null;
+      itemCount?: number;
     },
   ) {
     if (!input.agentUserId) return null;
 
+    const agent = await tx.user.findUnique({
+      where: { id: input.agentUserId },
+      select: { employmentType: true },
+    });
+    if (!agent || agent.employmentType !== 'COMMISSION') return null;
+
+    const itemCount = input.itemCount ?? 0;
     const rules = await tx.commissionRule.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
@@ -111,13 +174,20 @@ export class CommissionsService {
           (!r.source || r.source === 'ALL' || r.source === input.source),
       );
 
-    if (!rule) return null;
+    const defaultPerPiece = await this.getPerPieceRate();
+    const ruleType = rule?.type ?? 'PER_ITEM';
+    const fixedAmount = rule ? Number(rule.fixedAmount || 0) : defaultPerPiece;
+    const rate = Number(rule?.ratePercent || 0);
 
-    const rate = Number(rule.ratePercent || 0);
-    const amount =
-      rule.type === 'FIXED'
-        ? Number(rule.fixedAmount || 0)
-        : (input.orderTotal * rate) / 100;
+    let amount = 0;
+    if (ruleType === 'PER_ITEM') {
+      const perPiece = fixedAmount > 0 ? fixedAmount : defaultPerPiece;
+      amount = perPiece * itemCount;
+    } else if (ruleType === 'FIXED') {
+      amount = fixedAmount;
+    } else {
+      amount = (input.orderTotal * rate) / 100;
+    }
 
     if (amount <= 0) return null;
 
@@ -132,17 +202,19 @@ export class CommissionsService {
         orderId: input.orderId,
         agentUserId: input.agentUserId,
         pageId: input.pageId,
-        ruleId: rule.id,
+        ruleId: rule?.id,
         orderTotal: input.orderTotal,
+        itemCount,
         ratePercent: rate,
         amount,
         status: 'PENDING',
       },
       update: {
         amount,
+        itemCount,
         ratePercent: rate,
         orderTotal: input.orderTotal,
-        ruleId: rule.id,
+        ruleId: rule?.id,
       },
     });
   }

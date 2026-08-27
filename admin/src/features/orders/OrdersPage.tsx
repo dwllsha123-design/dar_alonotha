@@ -31,6 +31,7 @@ type Order = {
   shippingLabelUrl?: string | null;
   courier?: { id: string; name: string } | null;
   facebookPage?: { id: string; name: string; publicCode?: number } | null;
+  createdBy?: { id: string; name: string } | null;
   items?: OrderItem[];
   deliveries?: Array<{
     id: string;
@@ -215,6 +216,7 @@ export function OrdersPage() {
                 <th>رقم الطلب</th>
                 <th>المنتجات</th>
                 <th>العميل</th>
+                <th>أنشأه</th>
                 <th>المدينة</th>
                 <th>الحالة</th>
                 <th>المبلغ</th>
@@ -282,6 +284,7 @@ export function OrdersPage() {
                           {o.shippingPhone || ''}
                         </div>
                       </td>
+                      <td>{o.createdBy?.name || '—'}</td>
                       <td>{o.city || '—'}</td>
                       <td>
                         <span

@@ -24,20 +24,36 @@ export function CommissionsPage() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [nameAr, setNameAr] = useState('عمولة جديدة');
   const [ratePercent, setRatePercent] = useState(5);
+  const [perPiece, setPerPiece] = useState(5);
   const [error, setError] = useState('');
 
   async function load() {
-    const [e, r] = await Promise.all([
+    const [e, r, pp] = await Promise.all([
       api<Entry[]>('/commissions/entries'),
       api<Rule[]>('/commissions/rules').catch(() => [] as Rule[]),
+      api<{ amount: number }>('/commissions/per-piece-rate').catch(() => ({ amount: 5 })),
     ]);
     setEntries(e);
     setRules(r);
+    setPerPiece(pp.amount);
   }
 
   useEffect(() => {
     load().catch((err) => setError(err.message));
   }, []);
+
+  async function savePerPiece(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api('/commissions/per-piece-rate', {
+        method: 'PATCH',
+        body: JSON.stringify({ amount: perPiece }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل الحفظ');
+    }
+  }
 
   async function createRule(e: FormEvent) {
     e.preventDefault();
@@ -71,6 +87,28 @@ export function CommissionsPage() {
         <h1>العمولات</h1>
         <p>من هنا ترين عمولة كل مسوّق أو مندوب حسب الطلبات المرتبطة به أو بصفحته، وفق القواعد المعتمدة في النظام.</p>
       </div>
+
+      <form className="panel form-grid two" onSubmit={savePerPiece}>
+        <label>
+          عمولة القطعة (د.ل) — للمدير العام
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={perPiece}
+            onChange={(e) => setPerPiece(Number(e.target.value))}
+            required
+          />
+        </label>
+        <div style={{ display: 'flex', alignItems: 'end' }}>
+          <button className="btn secondary" type="submit">
+            حفظ عمولة القطعة
+          </button>
+        </div>
+        <p className="muted" style={{ gridColumn: '1 / -1', margin: 0 }}>
+          تُحسب لموظفي نوع «عمولة بالقطعة» عند تسليم الطلب: المبلغ × عدد القطع.
+        </p>
+      </form>
 
       <form className="panel form-grid two" onSubmit={createRule}>
         <label>
