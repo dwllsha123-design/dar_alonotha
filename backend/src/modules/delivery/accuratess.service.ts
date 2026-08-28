@@ -116,6 +116,52 @@ export class AccuratessService {
     return Date.now() < cached.expiresAt - 60_000;
   }
 
+  private debugEnabled() {
+    return (
+      this.config.get<string>('NODE_ENV') !== 'production' ||
+      this.config.get<string>('ACCURATESS_DEBUG') === 'true'
+    );
+  }
+
+  private gqlOperationName(query: string) {
+    return (
+      query.match(/(?:mutation|query)\s+(\w+)/i)?.[1] ||
+      query.match(/(?:mutation|query)\s*{\s*(\w+)/i)?.[1] ||
+      'anonymous'
+    );
+  }
+
+  /** Strip tokens/passwords before writing Accuratess payloads to logs. */
+  private sanitizeForLog(value: unknown, depth = 0): unknown {
+    if (value == null || depth > 6) return value;
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeForLog(item, depth + 1));
+    }
+    if (typeof value !== 'object') return value;
+    const out: Record<string, unknown> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      const k = key.toLowerCase();
+      if (
+        k.includes('token') ||
+        k.includes('password') ||
+        k === 'authorization' ||
+        k === 'apitoken'
+      ) {
+        out[key] = '[redacted]';
+      } else {
+        out[key] = this.sanitizeForLog(raw, depth + 1);
+      }
+    }
+    return out;
+  }
+
+  buildRefNumber(orderNumber: string, sourcePage: string, sourcePageCode?: number | null) {
+    const sourceLabel = sourcePageCode
+      ? `${sourcePage} (#${sourcePageCode})`
+      : sourcePage;
+    return `PAGE:${sourceLabel}|ORD:${orderNumber}`;
+  }
+
   /**
    * Authenticates via Accuratess `login` mutation and caches the token.
    * Username for Mayar tenant is typically the short login name (e.g. اسلام),
@@ -287,6 +333,8 @@ export class AccuratessService {
     const canRelogin =
       !account?.apiToken && !this.staticToken() && this.hasLoginCredentials();
 
+    const operation = this.gqlOperationName(query);
+
     const run = async (forceRelogin: boolean) => {
       if (forceRelogin && canRelogin) {
         this.cachedToken = null;
@@ -302,7 +350,31 @@ export class AccuratessService {
         },
         body: JSON.stringify({ query, variables }),
       });
-      return (await res.json()) as AccuratessGqlResult<T>;
+      const json = (await res.json()) as AccuratessGqlResult<T>;
+      if (this.debugEnabled()) {
+        const dataKeys = json.data ? Object.keys(json.data).join(',') : 'none';
+        this.logger.debug(
+          `Accuratess ${operation}: http=${res.status} errors=${json.errors?.length ?? 0} data=${dataKeys}`,
+        );
+        if (json.errors?.length) {
+          this.logger.debug(
+            `Accuratess ${operation} errors: ${json.errors.map((e) => e.message).join('; ')}`,
+          );
+        }
+        const saveShipment = (json.data as { saveShipment?: AccuratessShipmentResult } | undefined)
+          ?.saveShipment;
+        if (saveShipment) {
+          this.logger.debug(
+            `Accuratess saveShipment response: id=${saveShipment.id ?? '—'} code=${saveShipment.code ?? '—'} trackingUrl=${saveShipment.trackingUrl ? 'yes' : 'no'}`,
+          );
+        }
+        if (variables && Object.keys(variables).length) {
+          this.logger.debug(
+            `Accuratess ${operation} variables: ${JSON.stringify(this.sanitizeForLog(variables))}`,
+          );
+        }
+      }
+      return json;
     };
 
     try {
@@ -406,25 +478,76 @@ export class AccuratessService {
     return json.data?.listZonesDropdown || [];
   }
 
+  private usesCityLevelSubzone(area?: string | null) {
+    const a = (area || '').trim();
+    return !a || a === 'المركز' || a === 'أخرى';
+  }
+
   async resolveServiceId(account?: AccuratessAccountCreds | null): Promise<number> {
     const fromEnv = Number(this.config.get<string>('ACCURATESS_SERVICE_ID') || '');
     if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
 
-    const json = await this.request<{
-      shippingSettings?: { defaultShippingService?: { id?: number } | null };
+    const settings = await this.request<{
+      shippingSettings?: { defaultShippingService?: { id?: number; name?: string } | null };
+    }>(
+      `query AccuratessShippingSettings {
+        shippingSettings { defaultShippingService { id name } }
+      }`,
+      undefined,
+      account,
+    );
+    const def = settings.data?.shippingSettings?.defaultShippingService?.id;
+    if (def) return def;
+
+    const services = await this.request<{
       listShippingServicesDropdown?: Array<{ id: number; name: string }>;
     }>(
-      `query {
-        shippingSettings { defaultShippingService { id name } }
+      `query AccuratessShippingServices {
         listShippingServicesDropdown { id name }
       }`,
       undefined,
       account,
     );
-    const def = json.data?.shippingSettings?.defaultShippingService?.id;
-    if (def) return def;
-    const first = json.data?.listShippingServicesDropdown?.[0]?.id;
+    const first = services.data?.listShippingServicesDropdown?.[0]?.id;
     return first || 1;
+  }
+
+  /** Lookup an existing shipment by refNumber (idempotency / recovery). */
+  async findShipmentByRef(
+    refNumber: string,
+    account?: AccuratessAccountCreds | null,
+  ): Promise<AccuratessShipmentResult | null> {
+    if (!refNumber.trim() || !this.isConfigured(account)) return null;
+
+    const query = `
+      query FindShipmentByRef($input: ListShipmentsFilterInput!, $first: Int, $page: Int) {
+        listShipments(input: $input, first: $first, page: $page) {
+          data {
+            id
+            code
+            trackingUrl
+            refNumber
+          }
+        }
+      }
+    `;
+
+    const json = await this.request<{
+      listShipments?: { data?: AccuratessShipmentResult[] };
+    }>(
+      query,
+      { input: { refNumber: [refNumber] }, first: 1, page: 1 },
+      account,
+    );
+
+    if (json.errors?.length) {
+      this.logger.warn(
+        `Accuratess findShipmentByRef failed: ${json.errors.map((e) => e.message).join('; ')}`,
+      );
+      return null;
+    }
+
+    return json.data?.listShipments?.data?.[0] ?? null;
   }
 
   async resolveSenderZones(account?: AccuratessAccountCreds | null): Promise<{
@@ -477,25 +600,57 @@ export class AccuratessService {
     const cityName = (city || '').trim();
     if (!cityName) return null;
 
-    const matches = await this.listZonesDropdown(
-      { name: cityName, active: true },
+    const serviceId = await this.resolveServiceId(account);
+    const serviceFilter = { service: { serviceId } };
+
+    let matches = await this.listZonesDropdown(
+      { name: cityName, active: true, ...serviceFilter },
       account,
     );
+    if (!matches.length) {
+      matches = await this.listZonesDropdown({ name: cityName, active: true }, account);
+    }
     const zone = this.pickBestZone(matches, cityName);
     if (!zone) {
       this.logger.warn(`Accuratess: no zone match for city="${cityName}"`);
       return null;
     }
 
-    const children = await this.listZonesDropdown(
-      { parentId: zone.id, active: true },
+    if (this.usesCityLevelSubzone(area)) {
+      let children = await this.listZonesDropdown(
+        { parentId: zone.id, active: true, ...serviceFilter },
+        account,
+      );
+      if (!children.length) {
+        children = await this.listZonesDropdown(
+          { parentId: zone.id, active: true },
+          account,
+        );
+      }
+      const sub =
+        children.find((c) => !this.isPaymentVariantZone(c.name)) || children[0];
+      if (!sub) {
+        this.logger.warn(`Accuratess: no subzone for city="${cityName}"`);
+        return null;
+      }
+      return { recipientZoneId: zone.id, recipientSubzoneId: sub.id };
+    }
+
+    let children = await this.listZonesDropdown(
+      { parentId: zone.id, active: true, ...serviceFilter },
       account,
     );
+    if (!children.length) {
+      children = await this.listZonesDropdown(
+        { parentId: zone.id, active: true },
+        account,
+      );
+    }
     const sub =
       this.pickBestZone(children, area) ||
       this.pickBestZone(children, cityName) ||
+      children.find((c) => c.id === zone.id) ||
       children.find((c) => !this.isPaymentVariantZone(c.name)) ||
-      children[0] ||
       zone;
 
     return { recipientZoneId: zone.id, recipientSubzoneId: sub.id };
@@ -523,7 +678,33 @@ export class AccuratessService {
       return { ok: false, error: 'رقم هاتف المستلم مطلوب لإرسال Accuratess' };
     }
 
+    const refNumber = this.buildRefNumber(
+      payload.orderNumber,
+      payload.sourcePage,
+      payload.sourcePageCode,
+    );
+
     try {
+      const existing = await this.findShipmentByRef(refNumber, payload.account);
+      if (existing) {
+        const extracted = extractAccuratessTracking(existing);
+        if (extracted.code) {
+          this.logger.log(
+            `Accuratess idempotent hit ref=${refNumber} code=${extracted.code}`,
+          );
+          return {
+            ok: true,
+            shipment: {
+              id: extracted.id || existing.id,
+              code: extracted.code,
+              trackingUrl: extracted.trackingUrl || existing.trackingUrl || undefined,
+              refNumber: existing.refNumber || refNumber,
+            },
+            idempotent: true,
+          };
+        }
+      }
+
       const serviceId = await this.resolveServiceId(payload.account);
       const sender = await this.resolveSenderZones(payload.account);
       const recipient = await this.resolveRecipientZones(
@@ -583,13 +764,11 @@ export class AccuratessService {
         description:
           payload.description ||
           `طلب ${payload.orderNumber} — الراسل: ${sourceLabel}`,
-        refNumber: `PAGE:${sourceLabel}|ORD:${payload.orderNumber}`,
+        refNumber,
       };
 
-      if (payload.deliveryFees != null) {
-        input.deliveryFees = Number(payload.deliveryFees);
-      }
-
+      // deliveryFees is in the GraphQL schema but forbidden for many customer accounts
+      // ("حقل input.delivery fees محظور") — keep fee info in notes only.
       // Keep selection set scalar-only. Requesting `status { code name }` breaks
       // when Accuratess returns status as a string — mutation may commit remotely
       // while GraphQL returns errors and null data (no code saved locally).
@@ -611,23 +790,25 @@ export class AccuratessService {
       }>(query, { input }, payload.account);
 
       if (json.errors?.length) {
-        // Mutation may have succeeded server-side; still try to salvage a code.
-        const salvaged = extractAccuratessTracking(json.data?.saveShipment, json);
-        if (salvaged.code) {
-          this.logger.warn(
-            `Accuratess saveShipment returned GraphQL errors but code=${salvaged.code} was recovered`,
-          );
-          return {
-            ok: true,
-            shipment: {
-              id: salvaged.id || undefined,
-              code: salvaged.code,
-              trackingUrl: salvaged.trackingUrl || undefined,
-            },
-            raw: json,
-            input,
-            warnings: json.errors.map((e) => e.message),
-          };
+        const recovered = await this.findShipmentByRef(refNumber, payload.account);
+        if (recovered) {
+          const fromRef = extractAccuratessTracking(recovered);
+          if (fromRef.code) {
+            this.logger.warn(
+              `Accuratess saveShipment returned GraphQL errors but code=${fromRef.code} was recovered via refNumber`,
+            );
+            return {
+              ok: true,
+              shipment: {
+                id: fromRef.id || recovered.id,
+                code: fromRef.code,
+                trackingUrl: fromRef.trackingUrl || recovered.trackingUrl || undefined,
+              },
+              raw: json,
+              input,
+              warnings: json.errors.map((e) => e.message),
+            };
+          }
         }
 
         const msg = json.errors
@@ -649,11 +830,24 @@ export class AccuratessService {
       }
 
       const shipment = json.data?.saveShipment || null;
-      const extracted = extractAccuratessTracking(shipment, json);
+      let extracted = extractAccuratessTracking(shipment, json);
+
+      if (!extracted.code) {
+        const recovered = await this.findShipmentByRef(refNumber, payload.account);
+        if (recovered) {
+          extracted = extractAccuratessTracking(recovered, json);
+          if (extracted.code) {
+            this.logger.warn(
+              `Accuratess saveShipment empty response — recovered code=${extracted.code} via refNumber`,
+            );
+          }
+        }
+      }
+
       if (!extracted.code) {
         return {
           ok: false,
-          error: 'Accuratess لم يُرجع رقم شحنة (code/id)',
+          error: 'Accuratess لم يُرجع رقم شحنة (code)',
           raw: json,
           input,
         };
@@ -712,12 +906,11 @@ export class AccuratessService {
 
       if (json.errors?.length) {
         const alt = `
-          query Find($code: String!) {
-            listShipments(first: 1, input: { code: $code }) {
+          query FindShipment($input: ListShipmentsFilterInput!, $first: Int, $page: Int) {
+            listShipments(input: $input, first: $first, page: $page) {
               data {
                 id
                 code
-                status { code name }
                 trackingUrl
                 refNumber
                 notes
@@ -728,13 +921,14 @@ export class AccuratessService {
         const altJson = await this.gql<{
           listShipments?: {
             data?: Array<{
-              id?: string;
+              id?: string | number;
               code?: string;
-              status?: string | { code?: string; name?: string };
               trackingUrl?: string;
+              refNumber?: string;
+              notes?: string;
             }>;
           };
-        }>(alt, { code }, account);
+        }>(alt, { input: { code: [code] }, first: 1, page: 1 }, account);
         if (altJson.errors?.length) {
           return {
             ok: false,
@@ -746,11 +940,11 @@ export class AccuratessService {
           ok: true,
           shipment: shipment
             ? {
-                ...shipment,
-                status:
-                  typeof shipment.status === 'object'
-                    ? shipment.status?.code || shipment.status?.name
-                    : shipment.status,
+                id: shipment.id,
+                code: shipment.code,
+                trackingUrl: shipment.trackingUrl,
+                refNumber: shipment.refNumber,
+                notes: shipment.notes,
               }
             : undefined,
         };
@@ -761,10 +955,15 @@ export class AccuratessService {
         ok: true,
         shipment: shipment
           ? {
-              ...shipment,
+              id: shipment.id,
+              code: shipment.code,
+              trackingUrl: shipment.trackingUrl,
+              refNumber: shipment.refNumber,
+              notes: shipment.notes,
               status:
                 typeof shipment.status === 'object'
-                  ? shipment.status?.code || shipment.status?.name
+                  ? (shipment.status as { code?: string; name?: string })?.code ||
+                    (shipment.status as { code?: string; name?: string })?.name
                   : shipment.status,
             }
           : undefined,

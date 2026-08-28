@@ -141,83 +141,93 @@ export class OrderFulfillmentService {
     const pagePublicCode =
       order.pagePublicCode ?? order.facebookPage?.publicCode ?? null;
 
-    try {
-      const shipped = await this.accuratess.saveShipment({
-        orderNumber: order.orderNumber,
-        senderName,
-        recipientName: order.shippingName || 'عميل',
-        recipientPhone: order.shippingPhone || '',
-        recipientAddress: order.address || order.area || order.city || 'ليبيا',
-        city: order.city,
-        area: order.area,
-        notes: order.notes,
-        price: Number(order.totalAmount || 0),
-        deliveryFees: Number(order.deliveryFee || 0),
-        piecesCount: piecesCount > 0 ? piecesCount : 1,
-        paymentTypeCode: 'COLC',
-        sourcePage: senderName,
-        sourcePageCode: pagePublicCode,
-        account: account
-          ? {
-              apiToken: account.apiToken,
-              endpoint: account.endpoint,
-              senderZoneId: account.senderZoneId,
-              senderSubzoneId: account.senderSubzoneId,
-            }
-          : null,
-      });
+    if (order.externalTrackingNumber) {
+      tracking = order.externalTrackingNumber;
+      labelUrl = order.shippingLabelUrl;
+      externalResult = {
+        ok: true,
+        idempotent: true,
+        shipment: { code: tracking, trackingUrl: labelUrl },
+      };
+      payloadJson = JSON.stringify(externalResult);
+    } else {
+      try {
+        const shipped = await this.accuratess.saveShipment({
+          orderNumber: order.orderNumber,
+          senderName,
+          recipientName: order.shippingName || 'عميل',
+          recipientPhone: order.shippingPhone || '',
+          recipientAddress: order.address || order.area || order.city || 'ليبيا',
+          city: order.city,
+          area: order.area,
+          notes: order.notes,
+          price: Number(order.totalAmount || 0),
+          deliveryFees: Number(order.deliveryFee || 0),
+          piecesCount: piecesCount > 0 ? piecesCount : 1,
+          paymentTypeCode: 'COLC',
+          sourcePage: senderName,
+          sourcePageCode: pagePublicCode,
+          account: account
+            ? {
+                apiToken: account.apiToken,
+                endpoint: account.endpoint,
+                senderZoneId: account.senderZoneId,
+                senderSubzoneId: account.senderSubzoneId,
+              }
+            : null,
+        });
 
-      externalResult = shipped as Record<string, unknown>;
-      payloadJson = JSON.stringify(shipped);
+        externalResult = shipped as Record<string, unknown>;
+        payloadJson = JSON.stringify(shipped);
 
-      if ('skipped' in shipped && shipped.skipped) {
-        fulfillmentError = String(shipped.reason || 'تم تخطي Accuratess');
-        this.logger.warn(
-          `Accuratess skipped for ${order.orderNumber}: ${fulfillmentError}`,
-        );
-      } else if ('ok' in shipped && shipped.ok) {
-        const extracted = extractAccuratessTracking(
-          shipped.shipment as never,
-          (shipped as { raw?: unknown }).raw ?? shipped,
-        );
-        tracking = extracted.code;
-        labelUrl = extracted.trackingUrl;
-        if (!tracking) {
-          fulfillmentError = 'Accuratess نجح لكن بدون رقم شحنة في الرد';
-          this.logger.error(
-            `Accuratess empty tracking for ${order.orderNumber}: ${payloadJson}`,
+        if ('skipped' in shipped && shipped.skipped) {
+          fulfillmentError = String(shipped.reason || 'تم تخطي Accuratess');
+          this.logger.warn(
+            `Accuratess skipped for ${order.orderNumber}: ${fulfillmentError}`,
           );
-        } else {
-          this.logger.log(
-            `Accuratess OK ${order.orderNumber} tracking=${tracking} pageCode=${pagePublicCode ?? '—'}`,
+        } else if ('ok' in shipped && shipped.ok) {
+          const extracted = extractAccuratessTracking(
+            shipped.shipment as never,
+            (shipped as { raw?: unknown }).raw ?? shipped,
           );
-        }
-      } else if ('error' in shipped && shipped.error) {
-        // Still try to recover a code from raw error payloads
-        const extracted = extractAccuratessTracking(
-          null,
-          (shipped as { raw?: unknown }).raw ?? shipped,
-        );
-        if (extracted.code) {
           tracking = extracted.code;
           labelUrl = extracted.trackingUrl;
-          this.logger.warn(
-            `Accuratess reported error but recovered code=${tracking} for ${order.orderNumber}`,
+          if (!tracking) {
+            fulfillmentError = 'Accuratess نجح لكن بدون رقم شحنة في الرد';
+            this.logger.error(
+              `Accuratess empty tracking for ${order.orderNumber}: ${payloadJson}`,
+            );
+          } else {
+            this.logger.log(
+              `Accuratess OK ${order.orderNumber} tracking=${tracking} pageCode=${pagePublicCode ?? '—'}`,
+            );
+          }
+        } else if ('error' in shipped && shipped.error) {
+          const extracted = extractAccuratessTracking(
+            null,
+            (shipped as { raw?: unknown }).raw ?? shipped,
           );
-        } else {
-          fulfillmentError = String(shipped.error);
-          this.logger.error(
-            `Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
-          );
+          if (extracted.code) {
+            tracking = extracted.code;
+            labelUrl = extracted.trackingUrl;
+            this.logger.warn(
+              `Accuratess reported error but recovered code=${tracking} for ${order.orderNumber}`,
+            );
+          } else {
+            fulfillmentError = String(shipped.error);
+            this.logger.error(
+              `Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
+            );
+          }
         }
+      } catch (err) {
+        fulfillmentError =
+          err instanceof Error ? err.message : 'فشل الاتصال بشركة المعيار';
+        this.logger.error(
+          `Fulfillment Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
+        );
+        payloadJson = JSON.stringify({ error: fulfillmentError });
       }
-    } catch (err) {
-      fulfillmentError =
-        err instanceof Error ? err.message : 'فشل الاتصال بشركة المعيار';
-      this.logger.error(
-        `Fulfillment Accuratess error for ${order.orderNumber}: ${fulfillmentError}`,
-      );
-      payloadJson = JSON.stringify({ error: fulfillmentError });
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {

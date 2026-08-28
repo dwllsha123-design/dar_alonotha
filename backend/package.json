@@ -16,6 +16,7 @@
     "prisma:seed": "ts-node --transpile-only prisma/seed.ts",
     "purge:demo": "ts-node --transpile-only scripts/purge-demo.ts",
     "accuratess:token": "ts-node --transpile-only scripts/print-accuratess-token.ts",
+    "test:accuratess": "ts-node --transpile-only scripts/test-accuratess-integration.ts",
     "db:setup": "prisma migrate dev && prisma db seed"
   },
   "prisma": {

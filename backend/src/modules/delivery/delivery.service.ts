@@ -352,6 +352,29 @@ export class DeliveryService {
     // خارج طرابلس: إرسال لشركة Accuratess بمفتاح حساب الصفحة إن وُجد
     let accuratessResult: Record<string, unknown> | null = null;
     if (type === 'EXTERNAL') {
+      const existingTracked = await this.prisma.delivery.findFirst({
+        where: {
+          orderId: order.id,
+          trackingNumber: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          order: { include: { facebookPage: true } },
+          agent: { select: { id: true, name: true, phone: true } },
+          company: true,
+        },
+      });
+      if (existingTracked?.trackingNumber) {
+        return {
+          ...existingTracked,
+          accuratess: {
+            ok: true,
+            idempotent: true,
+            shipment: { code: existingTracked.trackingNumber },
+          },
+        };
+      }
+
       let account = await this.prisma.externalShippingAccount.findFirst({
         where: {
           isActive: true,
@@ -374,57 +397,88 @@ export class DeliveryService {
           orderBy: { updatedAt: 'desc' },
         });
       }
-      const piecesCount = await this.prisma.orderItem
-        .aggregate({
-          where: { orderId: order.id },
-          _sum: { quantity: true },
-        })
-        .then((r) => Number(r._sum.quantity || 1));
-      const shipped = await this.accuratess.saveShipment({
-        orderNumber: order.orderNumber,
-        senderName,
-        recipientName: order.shippingName || 'عميل',
-        recipientPhone: order.shippingPhone || '',
-        recipientAddress: order.address || order.area || order.city || 'ليبيا',
-        city: order.city,
-        area: order.area,
-        notes: order.notes,
-        price: Number(order.totalAmount || 0),
-        deliveryFees: Number(dto.fee ?? order.deliveryFee ?? 0),
-        piecesCount: piecesCount > 0 ? piecesCount : 1,
-        paymentTypeCode: 'COLC',
-        sourcePage: senderName,
-        sourcePageCode: order.pagePublicCode,
-        account: account
-          ? {
-              apiToken: account.apiToken,
-              endpoint: account.endpoint,
-              senderZoneId: account.senderZoneId,
-              senderSubzoneId: account.senderSubzoneId,
-            }
-          : null,
-      });
-      accuratessResult = shipped as Record<string, unknown>;
+      const accountCreds = account
+        ? {
+            apiToken: account.apiToken,
+            endpoint: account.endpoint,
+            senderZoneId: account.senderZoneId,
+            senderSubzoneId: account.senderSubzoneId,
+          }
+        : null;
+      const accuratessConfigured = this.accuratess.isConfigured(accountCreds);
 
-      const result = shipped as {
-        ok?: boolean;
-        skipped?: boolean;
-        shipment?: {
-          code?: string | number;
-          trackingUrl?: string;
-          id?: string | number;
+      if (order.externalTrackingNumber) {
+        status = 'ASSIGNED';
+        trackingNumber = order.externalTrackingNumber;
+        externalRef = order.externalTrackingNumber;
+        trackingUrl = order.shippingLabelUrl || undefined;
+        notes = [
+          notes,
+          `Accuratess code=${trackingNumber}`,
+          trackingUrl ? `track=${trackingUrl}` : '',
+          `source_page=${senderName}`,
+          order.pagePublicCode != null ? `pageCode=${order.pagePublicCode}` : '',
+        ]
+          .filter(Boolean)
+          .join(' | ');
+        accuratessResult = {
+          ok: true,
+          idempotent: true,
+          shipment: { code: trackingNumber, trackingUrl },
         };
-        error?: string;
-        reason?: string;
-        raw?: unknown;
-      };
+      } else {
+        const piecesCount = await this.prisma.orderItem
+          .aggregate({
+            where: { orderId: order.id },
+            _sum: { quantity: true },
+          })
+          .then((r) => Number(r._sum.quantity || 1));
 
-      if (result.ok || result.shipment || result.raw) {
-        const extracted = extractAccuratessTracking(
-          result.shipment as never,
-          result.raw ?? shipped,
-        );
-        if (extracted.code) {
+        const shipped = await this.accuratess.saveShipment({
+          orderNumber: order.orderNumber,
+          senderName,
+          recipientName: order.shippingName || 'عميل',
+          recipientPhone: order.shippingPhone || '',
+          recipientAddress: order.address || order.area || order.city || 'ليبيا',
+          city: order.city,
+          area: order.area,
+          notes: order.notes,
+          price: Number(order.totalAmount || 0),
+          deliveryFees: Number(dto.fee ?? order.deliveryFee ?? 0),
+          piecesCount: piecesCount > 0 ? piecesCount : 1,
+          paymentTypeCode: 'COLC',
+          sourcePage: senderName,
+          sourcePageCode: order.pagePublicCode,
+          account: accountCreds,
+        });
+        accuratessResult = shipped as Record<string, unknown>;
+
+        if ('skipped' in shipped && shipped.skipped) {
+          notes = `${notes || ''} | ${shipped.reason}`;
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              fulfillmentError: String(shipped.reason || 'skipped'),
+              externalResponsePayload: JSON.stringify(shipped),
+            },
+          });
+        } else if ('ok' in shipped && shipped.ok) {
+          const extracted = extractAccuratessTracking(
+            shipped.shipment as never,
+            (shipped as { raw?: unknown }).raw ?? shipped,
+          );
+          if (!extracted.code) {
+            const errMsg = 'فشل إنشاء شحنة التوصيل لدى Accurate — لم يُرجع رقم شحنة';
+            await this.prisma.order.update({
+              where: { id: order.id },
+              data: {
+                fulfillmentError: errMsg,
+                externalResponsePayload: JSON.stringify(shipped),
+              },
+            });
+            throw new BadRequestException(errMsg);
+          }
+
           status = 'ASSIGNED';
           trackingNumber = extracted.code;
           externalRef = extracted.id || extracted.code;
@@ -451,43 +505,23 @@ export class DeliveryService {
               deliveryType: 'EXTERNAL',
             },
           });
-        } else if (result.skipped) {
-          notes = `${notes || ''} | ${result.reason}`;
+        } else {
+          const errMsg =
+            ('error' in shipped && shipped.error
+              ? String(shipped.error)
+              : null) || 'فشل إنشاء شحنة التوصيل لدى Accurate';
+          notes = `${notes || ''} | Accuratess error: ${errMsg}`;
           await this.prisma.order.update({
             where: { id: order.id },
             data: {
-              fulfillmentError: String(result.reason || 'skipped'),
+              fulfillmentError: errMsg,
               externalResponsePayload: JSON.stringify(shipped),
             },
           });
-        } else if (result.error) {
-          notes = `${notes || ''} | Accuratess error: ${result.error}`;
-          await this.prisma.order.update({
-            where: { id: order.id },
-            data: {
-              fulfillmentError: String(result.error),
-              externalResponsePayload: JSON.stringify(shipped),
-            },
-          });
+          if (accuratessConfigured) {
+            throw new BadRequestException(errMsg);
+          }
         }
-      } else if (result.skipped) {
-        notes = `${notes || ''} | ${result.reason}`;
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            fulfillmentError: String(result.reason || 'skipped'),
-            externalResponsePayload: JSON.stringify(shipped),
-          },
-        });
-      } else if (result.error) {
-        notes = `${notes || ''} | Accuratess error: ${result.error}`;
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: {
-            fulfillmentError: String(result.error),
-            externalResponsePayload: JSON.stringify(shipped),
-          },
-        });
       }
     }
 
