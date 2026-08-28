@@ -7,7 +7,7 @@
 #
 # API_UPSTREAM:
 #   Docker Compose → api:3000
-#   Railway private → <backend-service>.railway.internal:3000
+#   Railway private → <backend-service>.railway.internal:8080
 #
 # PORT: Railway injects this (often 8080). Compose defaults to 80.
 
@@ -57,7 +57,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://$api_upstream/api/;
+        proxy_pass http://$api_upstream$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -90,7 +90,7 @@ server {
     }
 
     location /r/ {
-        proxy_pass http://$api_upstream/r/;
+        proxy_pass http://$api_upstream$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
@@ -99,7 +99,7 @@ server {
     }
 
     location /.well-known/ {
-        proxy_pass http://$api_upstream/.well-known/;
+        proxy_pass http://$api_upstream$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
@@ -113,3 +113,4 @@ server {
         try_files $uri $uri/ /index.html;
     }
 }
+

@@ -22,7 +22,7 @@ RUN npm run build
 
 FROM nginx:1.27-alpine
 # Railway private DNS name for the Nest backend service (override for Compose)
-ENV API_UPSTREAM=backend.railway.internal:3000
+ENV API_UPSTREAM=backend.railway.internal:8080
 # Railway sets PORT at runtime; Compose maps host 80 → container 80
 ENV PORT=80
 # Only substitute these vars (leave nginx $host / $uri / $forwarded_* alone)
@@ -41,3 +41,4 @@ COPY --from=admin /src/dist /usr/share/nginx/html/admin
 EXPOSE 80
 
 ENTRYPOINT ["/docker-entrypoint-web.sh"]
+
