@@ -378,6 +378,79 @@ async function main() {
       ),
     );
 
+    if (firstCode && deliveryAfterRoute?.id) {
+      const slipByDelivery = await delivery.getShippingSlip(deliveryAfterRoute.id);
+      checks.push(
+        assert(
+          slipByDelivery.accuratessCode === firstCode,
+          'shipping slip exposes accuratessCode',
+          String(slipByDelivery.accuratessCode),
+        ),
+      );
+      checks.push(
+        assert(
+          slipByDelivery.trackingNumber === firstCode,
+          'shipping slip exposes trackingNumber',
+          String(slipByDelivery.trackingNumber),
+        ),
+      );
+      checks.push(
+        assert(
+          slipByDelivery.order.externalTrackingNumber === firstCode ||
+            slipByDelivery.externalTrackingNumber === firstCode,
+          'shipping slip exposes externalTrackingNumber',
+          `order=${slipByDelivery.order.externalTrackingNumber} slip=${slipByDelivery.externalTrackingNumber ?? '—'}`,
+        ),
+      );
+
+      const bulk = await delivery.getShippingSlipsBulk(admin, {
+        orderIds: [order.id],
+      });
+      const printed = bulk.slips[0];
+      const printedCode =
+        printed?.order.externalTrackingNumber ||
+        printed?.externalTrackingNumber ||
+        printed?.trackingNumber ||
+        printed?.accuratessCode ||
+        null;
+      checks.push(
+        assert(
+          printedCode === firstCode,
+          'bulk print slip shows Accuratess code',
+          String(printedCode),
+        ),
+      );
+
+      const noTrackingOrder = await createExternalTestOrder(
+        prisma,
+        admin.id,
+        destination.city,
+        destination.area,
+      );
+      await prisma.order.update({
+        where: { id: noTrackingOrder.id },
+        data: { externalTrackingNumber: null, shippingLabelUrl: null },
+      });
+      const emptyBulk = await delivery.getShippingSlipsBulk(admin, {
+        orderIds: [noTrackingOrder.id],
+      });
+      const emptySlip = emptyBulk.slips[0];
+      const emptyCode =
+        emptySlip?.order.externalTrackingNumber ||
+        emptySlip?.externalTrackingNumber ||
+        emptySlip?.trackingNumber ||
+        emptySlip?.accuratessCode ||
+        null;
+      checks.push(
+        assert(
+          !emptyCode,
+          'bulk print slip without tracking stays empty',
+          String(emptyCode),
+        ),
+      );
+      await prisma.order.delete({ where: { id: noTrackingOrder.id } }).catch(() => undefined);
+    }
+
     // 4) Failure scenario — invalid token must not succeed without code
     const directFail = await accuratess.saveShipment({
       orderNumber: `FAIL-${Date.now()}`,

@@ -7,6 +7,8 @@ type Slip = {
   shippingSlipNo?: string;
   trackingNumber?: string | null;
   trackingUrl?: string | null;
+  externalRef?: string | null;
+  externalTrackingNumber?: string | null;
   accuratessCode?: string | null;
   pagePublicCode?: number | null;
   pageCode?: number | null;
@@ -41,9 +43,11 @@ type Slip = {
 
 function slipAccuratessCode(s: Slip): string | null {
   const raw =
-    s.accuratessCode ||
-    s.trackingNumber ||
     s.order.externalTrackingNumber ||
+    s.externalTrackingNumber ||
+    s.trackingNumber ||
+    s.externalRef ||
+    s.accuratessCode ||
     null;
   return raw ? String(raw).trim() : null;
 }

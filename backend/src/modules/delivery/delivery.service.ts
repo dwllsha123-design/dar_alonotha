@@ -783,6 +783,8 @@ export class DeliveryService {
       ...delivery,
       trackingNumber: accuratessCode || delivery.trackingNumber,
       accuratessCode,
+      externalTrackingNumber:
+        delivery.order.externalTrackingNumber || accuratessCode,
       pagePublicCode,
       pageCode: pagePublicCode,
       printTitle: 'بوليصة شحن — دار الأنوثة',
@@ -806,12 +808,30 @@ export class DeliveryService {
     order: { externalTrackingNumber?: string | null },
   ): string | null {
     const raw =
+      order.externalTrackingNumber ||
       delivery?.trackingNumber ||
       delivery?.externalRef ||
-      order.externalTrackingNumber ||
       null;
     const code = raw ? String(raw).trim() : '';
     return code || null;
+  }
+
+  /** Prefer a delivery row that already has Accuratess tracking for print slips. */
+  private async findDeliveryForSlip(orderId: string) {
+    const tracked = await this.prisma.delivery.findFirst({
+      where: {
+        orderId,
+        OR: [{ trackingNumber: { not: null } }, { externalRef: { not: null } }],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (tracked) return tracked;
+    return this.prisma.delivery.findFirst({
+      where: { orderId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
   }
 
   async slipFromOrder(orderId: string) {
@@ -822,20 +842,13 @@ export class DeliveryService {
         customer: true,
         courier: { select: { id: true, name: true, phone: true } },
         facebookPage: { select: { id: true, name: true, publicCode: true } },
-        deliveries: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          include: {
-            agent: { select: { id: true, name: true, phone: true } },
-            company: true,
-          },
-        },
       },
     });
     if (!order) throw new NotFoundException('الطلب غير موجود');
     this.assertWaybillPrintable(order);
-    if (order.deliveries[0]) {
-      return this.getShippingSlip(order.deliveries[0].id);
+    const deliveryForSlip = await this.findDeliveryForSlip(orderId);
+    if (deliveryForSlip) {
+      return this.getShippingSlip(deliveryForSlip.id);
     }
     const senderName = await this.resolveSenderName(order);
     const accuratessCode = this.resolveAccuratessCode(null, order);
@@ -847,6 +860,7 @@ export class DeliveryService {
       trackingNumber: accuratessCode,
       trackingUrl: order.shippingLabelUrl || null,
       accuratessCode,
+      externalTrackingNumber: order.externalTrackingNumber || accuratessCode,
       pagePublicCode,
       pageCode: pagePublicCode,
       fee: order.deliveryFee,
