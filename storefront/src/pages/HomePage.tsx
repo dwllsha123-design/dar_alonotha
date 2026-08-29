@@ -167,7 +167,16 @@ export function HomePage() {
             {promoBanners.map((b) => (
               <StoreLink key={b.id} className="banner-card" to={b.linkUrl || '/offers'}>
                 {b.imageUrl ? (
-                  <img src={b.imageUrl} alt="" loading="lazy" decoding="async" />
+                  <img
+                    src={b.imageUrl}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    style={{
+                      objectFit: b.imageFit === 'contain' ? 'contain' : 'cover',
+                      objectPosition: `${b.imagePosX ?? 50}% ${b.imagePosY ?? 50}%`,
+                    }}
+                  />
                 ) : (
                   <div className="banner-fallback" />
                 )}
