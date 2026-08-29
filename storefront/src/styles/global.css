@@ -457,44 +457,32 @@ img {
   .site-footer { display: none; }
 }
 
-/* Hero — شاشة رئيسة ثابتة: 4:3 للموبايل، 16:9 للكمبيوتر (مرجع 1920×1080) */
+/* Hero — شاشة رئيسة: عرض كامل بلا قص (نسبة الصورة الأصلية) */
 .hero-lux {
   position: relative;
   width: 100%;
   max-width: 100%;
   margin-bottom: var(--section-gap);
   background: transparent;
-  overflow: hidden;
+  overflow-x: clip;
 }
 .hero-lux-media {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  max-height: min(70vh, 520px);
   overflow: hidden;
   background: transparent;
-}
-@media (min-width: 640px) {
-  .hero-lux-media {
-    aspect-ratio: 16 / 9;
-    max-height: min(72vh, 640px);
-  }
-}
-@media (min-width: 1024px) {
-  .hero-lux-media {
-    aspect-ratio: 16 / 9;
-    max-height: min(72vh, 720px);
-  }
+  line-height: 0;
 }
 .hero-lux-slide,
 .hero-lux-slide.is-active {
   position: absolute;
-  inset: 0;
+  inset-inline: 0;
+  top: 0;
   width: 100%;
-  max-width: none;
-  height: 100%;
+  max-width: 100%;
+  height: auto;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   background: transparent;
   opacity: 0;
@@ -502,9 +490,15 @@ img {
   transition: opacity .8s ease;
 }
 .hero-lux-slide.is-active {
+  position: relative;
   opacity: 1;
   pointer-events: auto;
   z-index: 1;
+}
+@media (min-width: 1024px) {
+  .hero-lux-slide.is-active {
+    max-height: min(72vh, 780px);
+  }
 }
 .hero-lux-inner {
   width: min(720px, calc(100% - 32px));
@@ -570,53 +564,54 @@ img {
   background: var(--gold-bright);
 }
 
-/* Hero — responsive frame: 4:3 mobile, 16:9 tablet/desktop (upload 1920×1080) */
+/* Hero / Banner سلايدر: الصورة كاملة بعرض الشاشة دون قص */
 .hero-ly {
   position: relative;
   width: 100%;
   max-width: 100%;
   margin-bottom: var(--section-gap);
-  overflow: hidden;
+  overflow-x: clip;
 }
 .hero-ly-media {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  max-height: min(70vh, 520px);
   overflow: hidden;
   background: var(--surface-low);
-}
-@media (min-width: 640px) {
-  .hero-ly-media {
-    aspect-ratio: 16 / 9;
-    max-height: min(72vh, 640px);
-  }
-}
-@media (min-width: 1024px) {
-  .hero-ly-media {
-    aspect-ratio: 16 / 9;
-    /* Only enforce floor when viewport is wide enough that 16:9 ≥ ~480px */
-    min-height: min(480px, 56.25vw);
-    max-height: min(72vh, 720px);
-  }
+  line-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 .hero-ly-slide {
   position: absolute;
-  inset: 0;
+  inset-inline: 0;
+  top: 0;
   width: 100%;
-  max-width: none;
-  height: 100%;
+  max-width: 100%;
+  height: auto;
   display: block;
-  object-fit: cover;
-  object-position: center;
+  object-fit: contain;
+  object-position: center center;
   opacity: 0;
   pointer-events: none;
   transition: opacity .8s ease;
 }
 .hero-ly-slide.is-active {
+  position: relative;
+  inset: auto;
   opacity: 1;
   pointer-events: auto;
   z-index: 1;
+  /* موبايل/تابلت: عرض الشاشة كامل + النسبة الأصلية بلا قص */
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+@media (min-width: 1024px) {
+  .hero-ly-slide.is-active {
+    /* سطح المكتب: حافظ على الصورة كاملة مع سقف ارتفاع معقول */
+    max-height: min(72vh, 780px);
+  }
 }
 .hero-ly-overlay {
   position: absolute;
@@ -629,21 +624,21 @@ img {
   position: absolute;
   z-index: 3;
   inset-inline: 0;
-  bottom: 20px;
+  bottom: 16px;
   display: flex;
   justify-content: center;
   padding-inline: var(--container-m);
 }
 @media (min-width: 640px) {
   .hero-ly-cta {
-    bottom: 36px;
+    bottom: 28px;
     padding-inline: 40px;
   }
 }
 @media (min-width: 1024px) {
   .hero-ly-cta {
     justify-content: flex-end;
-    bottom: 48px;
+    bottom: 40px;
     padding-inline: var(--container-d);
   }
 }
@@ -1377,8 +1372,7 @@ th { color: var(--on-surface-variant); font-size: 13px; }
   height: auto;
   max-width: 100%;
   display: block;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   background: transparent;
 }
