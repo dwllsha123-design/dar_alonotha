@@ -52,14 +52,8 @@ export class CodeSequenceService {
     return randomBytes(24).toString('hex');
   }
 
-  variantBarcodeFromParts(sku: string, seq: number) {
-    const clean = sku.replace(/[^A-Z0-9-]/gi, '').toUpperCase();
-    // إذا كان الكود بالفعل بنمط DA-xxxx استخدمه كباركود مباشرة
-    if (/^DA-\d{4,}(-\w+)?$/i.test(clean)) {
-      return clean;
-    }
-    const base = clean.slice(0, 8) || 'SKU';
-    return `DA-${base}-${String(seq).padStart(6, '0')}`;
+  variantBarcodeFromParts(_sku: string, seq: number) {
+    return `DO-${String(seq).padStart(8, '0')}`;
   }
 
   /** كود صنف فريد: DA-1001, DA-1002, ... */

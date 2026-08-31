@@ -397,7 +397,12 @@ export class ProductsService {
     });
 
     if (imageUrl && dto.color) {
-      await this.ensureColorImage(productId, dto.color, imageUrl);
+      const colorImageCount = await this.prisma.productImage.count({
+        where: { productId, color: dto.color },
+      });
+      if (colorImageCount === 0) {
+        await this.addColorGalleryImage(productId, dto.color, imageUrl);
+      }
     }
 
     const qty = Math.max(0, Number(dto.quantity || 0));
@@ -412,7 +417,7 @@ export class ProductsService {
       where: { OR: [{ barcode: fromSku }, { sku: fromSku }] },
     });
     if (!clash) return fromSku;
-    return `DA-V${String(seq).padStart(8, '0')}`;
+    return `DO-${String(seq).padStart(8, '0')}`;
   }
 
   private async seedVariantStock(
@@ -440,32 +445,32 @@ export class ProductsService {
     });
   }
 
-  private async ensureColorImage(productId: string, color: string, url: string) {
-    const existing = await this.prisma.productImage.findFirst({
+  /** Append a color gallery image (max 4 per color). First image becomes variant.imageUrl. */
+  private async addColorGalleryImage(productId: string, color: string, url: string) {
+    const colorCount = await this.prisma.productImage.count({
       where: { productId, color },
     });
-    if (existing) {
-      await this.prisma.productImage.update({
-        where: { id: existing.id },
-        data: { url, alt: color },
-      });
-    } else {
-      const count = await this.prisma.productImage.count({ where: { productId } });
-      await this.prisma.productImage.create({
-        data: {
-          productId,
-          url,
-          color,
-          alt: color,
-          sortOrder: count,
-          isPrimary: count === 0,
-        },
+    if (colorCount >= 4) {
+      throw new BadRequestException(`الحد الأقصى 4 صور للون «${color}»`);
+    }
+    const totalCount = await this.prisma.productImage.count({ where: { productId } });
+    const created = await this.prisma.productImage.create({
+      data: {
+        productId,
+        url,
+        color,
+        alt: color,
+        sortOrder: totalCount,
+        isPrimary: totalCount === 0,
+      },
+    });
+    if (colorCount === 0) {
+      await this.prisma.productVariant.updateMany({
+        where: { productId, color },
+        data: { imageUrl: url },
       });
     }
-    await this.prisma.productVariant.updateMany({
-      where: { productId, color },
-      data: { imageUrl: url },
-    });
+    return created;
   }
 
   async addImage(productId: string, url: string, isPrimary = false, color?: string) {
@@ -473,10 +478,7 @@ export class ProductsService {
     if (!product) throw new NotFoundException('المنتج غير موجود');
     const colorName = color?.trim() || undefined;
     if (colorName) {
-      await this.ensureColorImage(productId, colorName, url);
-      return this.prisma.productImage.findFirst({
-        where: { productId, color: colorName },
-      });
+      return this.addColorGalleryImage(productId, colorName, url);
     }
     const count = await this.prisma.productImage.count({ where: { productId } });
     if (isPrimary || count === 0) {
@@ -510,6 +512,16 @@ export class ProductsService {
     });
     if (!image) throw new NotFoundException('الصورة غير موجودة');
     await this.prisma.productImage.delete({ where: { id: imageId } });
+    if (image.color) {
+      const next = await this.prisma.productImage.findFirst({
+        where: { productId, color: image.color },
+        orderBy: { sortOrder: 'asc' },
+      });
+      await this.prisma.productVariant.updateMany({
+        where: { productId, color: image.color, imageUrl: image.url },
+        data: { imageUrl: next?.url ?? null },
+      });
+    }
     return { ok: true };
   }
 }
