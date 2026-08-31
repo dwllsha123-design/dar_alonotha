@@ -263,10 +263,6 @@ export function StoreLayout() {
             <strong>النشرة الإخبارية</strong>
             <p className="footer-newsletter-hint">للحصول على آخر الأخبار وآخر التحديثات منا.</p>
             <NewsletterForm />
-            <div className="pay-badges" aria-label="طرق الدفع">
-              <span>Visa</span>
-              <span>Mastercard</span>
-            </div>
           </div>
         </div>
         <div className="container footer-bottom">
