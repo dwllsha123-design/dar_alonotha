@@ -122,7 +122,7 @@ export function ProductPage() {
                 decoding="async"
               />
             ) : (
-              <div className="thumb-ph" aria-hidden style={{ width: '100%', minHeight: 360 }}>
+              <div className="thumb-ph" aria-hidden>
                 <span className="material-symbols-outlined" style={{ fontSize: 48 }}>
                   checkroom
                 </span>
@@ -152,7 +152,7 @@ export function ProductPage() {
         </div>
         <div className="panel stack" style={{ display: 'grid', gap: 14 }}>
           <div className="brand-en">Dar Al Onoutha</div>
-          <h1 style={{ margin: 0, fontFamily: 'var(--display)', fontSize: 40 }}>{product.nameAr}</h1>
+          <h1 className="product-title">{product.nameAr}</h1>
           <div className="price-row">
             <span className="price" style={{ fontSize: 24 }}>
               {money(variant?.retailPrice ?? product.retailPrice)}

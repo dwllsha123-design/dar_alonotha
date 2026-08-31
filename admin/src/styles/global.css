@@ -635,8 +635,9 @@ tbody tr:hover { background: #f1f5f9; }
   flex-wrap: wrap;
 }
 .color-image-preview {
-  width: 80px;
-  height: 100px;
+  width: clamp(64px, 18vw, 80px);
+  height: auto;
+  aspect-ratio: 4 / 5;
   object-fit: cover;
   border-radius: 10px;
   border: 1px solid var(--outline-variant);
@@ -934,7 +935,7 @@ input:focus, select:focus, textarea:focus {
   border: 2px dashed #c4b49a;
   border-radius: 16px;
   background: #1c1408;
-  min-height: 220px;
+  min-height: 0;
   padding: 0;
   overflow: hidden;
   cursor: pointer;
@@ -943,7 +944,7 @@ input:focus, select:focus, textarea:focus {
   color: inherit;
   position: relative;
 }
-.image-drop.hero { min-height: 240px; }
+.image-drop.hero { min-height: 0; }
 .image-drop:hover,
 .image-drop.drag-over {
   border-color: #d4a64a;
@@ -952,18 +953,31 @@ input:focus, select:focus, textarea:focus {
 .image-drop img {
   display: block;
   width: 100%;
-  height: 280px;
+  height: auto;
+  max-width: 100%;
+  aspect-ratio: 4 / 5;
+  max-height: min(50vh, 360px);
   object-fit: cover;
+  object-position: center;
 }
-.image-drop.hero img { height: 320px; }
+.image-drop.hero img {
+  aspect-ratio: 16 / 9;
+  max-height: min(45vh, 420px);
+}
 .image-drop-empty {
-  min-height: 220px;
+  min-height: 180px;
+  aspect-ratio: 4 / 5;
+  max-height: 320px;
   display: grid;
   place-items: center;
   gap: 6px;
   color: #f8edd9;
   padding: 28px 16px;
   text-align: center;
+}
+.image-drop.hero .image-drop-empty {
+  aspect-ratio: 16 / 9;
+  min-height: 160px;
 }
 .image-drop-empty strong { font-size: 15px; }
 .image-drop-empty span:last-child { opacity: 0.75; font-size: 13px; }
@@ -987,7 +1001,7 @@ input:focus, select:focus, textarea:focus {
 }
 .hero-admin-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
   gap: 14px;
 }
 .hero-admin-card {
@@ -995,13 +1009,16 @@ input:focus, select:focus, textarea:focus {
   border-radius: 14px;
   overflow: hidden;
   background: var(--surface-low, #f6f1e8);
+  min-width: 0;
 }
 .hero-admin-card img,
 .hero-admin-fallback,
 .hero-admin-thumb {
   width: 100%;
-  height: 150px;
+  height: auto;
+  aspect-ratio: 16 / 9;
   object-fit: cover;
+  object-position: center;
   display: block;
   background: linear-gradient(135deg, #f5d0d4, #e8c4b8);
 }
@@ -1168,5 +1185,8 @@ input:focus, select:focus, textarea:focus {
   .stats { grid-template-columns: 1fr 1fr; }
   .form-grid.two { grid-template-columns: 1fr; }
   .image-drop img,
-  .image-drop.hero img { height: 200px; }
+  .image-drop.hero img {
+    height: auto;
+    max-height: min(40vh, 240px);
+  }
 }

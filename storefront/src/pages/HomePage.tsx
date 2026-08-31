@@ -37,7 +37,8 @@ export function HomePage() {
           id: b.id,
           src: b.imageUrl as string,
           alt: b.title,
-          fit: (b.imageFit === 'contain' ? 'contain' : 'cover') as 'cover' | 'contain',
+          /* contain يحافظ على كامل البانر العريض؛ cover يُستخدم فقط إن طُلب صراحة من الإدارة */
+          fit: (b.imageFit === 'cover' ? 'cover' : 'contain') as 'cover' | 'contain',
           zoom: b.imageZoom ?? 100,
           x: b.imagePosX ?? 50,
           y: b.imagePosY ?? 50,
@@ -46,7 +47,7 @@ export function HomePage() {
           id: src,
           src,
           alt: '',
-          fit: 'cover' as const,
+          fit: 'contain' as const,
           zoom: 100,
           x: 50,
           y: 50,
@@ -79,22 +80,29 @@ export function HomePage() {
     <>
       <section className="hero-ly">
         <div className="hero-ly-media">
-          {heroSlides.map((slide, i) => (
-            <img
-              key={slide.id}
-              className={`hero-ly-slide${i === heroIndex ? ' is-active' : ''}`}
-              src={slide.src}
-              alt={slide.alt}
-              decoding="async"
-              loading={i === 0 ? 'eager' : 'lazy'}
-              style={{
-                objectFit: slide.fit,
-                objectPosition: `${slide.x}% ${slide.y}%`,
-                transform: `scale(${slide.zoom / 100})`,
-                transformOrigin: `${slide.x}% ${slide.y}%`,
-              }}
-            />
-          ))}
+          {heroSlides.map((slide, i) => {
+            const scaled = slide.zoom !== 100;
+            return (
+              <img
+                key={slide.id}
+                className={`hero-ly-slide${i === heroIndex ? ' is-active' : ''}`}
+                src={slide.src}
+                alt={slide.alt}
+                decoding="async"
+                loading={i === 0 ? 'eager' : 'lazy'}
+                style={{
+                  objectFit: slide.fit === 'cover' && scaled ? 'cover' : 'contain',
+                  objectPosition: `${slide.x}% ${slide.y}%`,
+                  ...(scaled
+                    ? {
+                        transform: `scale(${slide.zoom / 100})`,
+                        transformOrigin: `${slide.x}% ${slide.y}%`,
+                      }
+                    : null),
+                }}
+              />
+            );
+          })}
           <div className="hero-ly-overlay" />
           <div className="hero-dots" aria-hidden>
             {heroSlides.map((slide, i) => (
@@ -167,7 +175,16 @@ export function HomePage() {
             {promoBanners.map((b) => (
               <StoreLink key={b.id} className="banner-card" to={b.linkUrl || '/offers'}>
                 {b.imageUrl ? (
-                  <img src={b.imageUrl} alt="" loading="lazy" decoding="async" />
+                  <img
+                    src={b.imageUrl}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    style={{
+                      objectFit: b.imageFit === 'contain' ? 'contain' : 'cover',
+                      objectPosition: `${b.imagePosX ?? 50}% ${b.imagePosY ?? 50}%`,
+                    }}
+                  />
                 ) : (
                   <div className="banner-fallback" />
                 )}
