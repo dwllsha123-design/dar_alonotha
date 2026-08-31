@@ -5,7 +5,6 @@ import { useAuth } from '../auth/AuthContext';
 import { NewsletterForm } from '../components/NewsletterForm';
 import {
   SITE_COPY,
-  STORE_EMAIL,
   STORE_LOCATION,
   STORE_PHONE_LINKS,
   STORE_PHONES,
@@ -225,7 +224,7 @@ export function StoreLayout() {
         <div className="container footer-grid footer-grid-ly">
           <div className="footer-brand">
             <img className="footer-logo" src="/brand-logo.png" alt="دار الأنوثة" />
-            <h3>حول المتجر</h3>
+            <h3>حول الشركة</h3>
             <p>{SITE_COPY.footerAbout}</p>
             <p>{SITE_COPY.footerDelivery}</p>
             <ul className="footer-contact">
@@ -237,9 +236,6 @@ export function StoreLayout() {
                     <a href={p.href}>{p.label}</a>
                   </span>
                 ))}
-              </li>
-              <li>
-                <a href={`mailto:${STORE_EMAIL}`}>{STORE_EMAIL}</a>
               </li>
             </ul>
           </div>
