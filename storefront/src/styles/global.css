@@ -665,6 +665,18 @@ img { max-width: 100%; height: auto; display: block; background: transparent; }
   border: 1px solid rgba(201, 162, 39, 0.28);
 }
 .bento-card.offer .label { padding: 16px; }
+.bento-card.text-tile {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  color: var(--on-surface);
+}
+.bento-card.text-tile .label {
+  padding: 20px 12px;
+}
 .bento-card.new-banner .label h3 { color: var(--champagne); }
 .chip-new {
   display: inline-block; margin-bottom: 8px;
@@ -1072,6 +1084,26 @@ img { max-width: 100%; height: auto; display: block; background: transparent; }
   object-fit: cover;
   object-position: center;
 }
+.cat-tile.text-only .cat-tile-media,
+.cat-tile.offer-tile .cat-tile-media {
+  aspect-ratio: auto;
+  min-height: 112px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+  border: 1px solid var(--outline-variant);
+}
+.cat-tile.text-only .cat-tile-media h3 {
+  margin: 0;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--on-surface);
+  line-height: 1.35;
+}
 .cat-tile h3 {
   margin: 0;
   padding: 12px 8px 0;
@@ -1089,14 +1121,8 @@ img { max-width: 100%; height: auto; display: block; background: transparent; }
   text-align: center;
 }
 .cat-tile.offer-tile .cat-tile-media {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
   background: var(--accent-tile);
-  border: 1px solid rgba(201, 162, 39, 0.28);
-  padding: 16px;
+  border-color: rgba(201, 162, 39, 0.28);
 }
 .cat-tile.offer-tile .cat-tile-media h3 {
   color: var(--gold-bright);

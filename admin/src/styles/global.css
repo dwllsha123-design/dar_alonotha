@@ -437,6 +437,35 @@ tr.row-focus td {
 .stat.alert .stat-value { color: var(--danger-text); }
 
 .table-wrap { overflow: auto; }
+.cat-image-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 112px;
+}
+.cat-image-thumb {
+  width: 64px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  display: block;
+}
+.cat-image-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 80px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  font-size: 11px;
+  text-align: center;
+  padding: 4px;
+  white-space: normal;
+}
 table {
   width: 100%;
   border-collapse: collapse;

@@ -2,7 +2,6 @@
 export const HOME_IMAGES = {
   hero: '/home/hero.jpg',
   comingSoon: '/home/coming-soon.jpg',
-  category: '/home/category.jpg',
   products: [
     '/home/product-faraa.jpg',
     '/home/product-kaftan.jpg',

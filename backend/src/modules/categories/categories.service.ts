@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { join } from 'path';
+import {
+  saveUploadAsWebp,
+  type UploadedImageFile,
+} from '../../common/image-upload';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 
@@ -89,6 +94,7 @@ export class CategoriesService {
         nameEn: dto.nameEn?.trim() || null,
         slug,
         parentId,
+        imageUrl: dto.imageUrl?.trim() || null,
         sortOrder: dto.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1,
         isActive: dto.isActive ?? true,
       },
@@ -130,9 +136,43 @@ export class CategoriesService {
             : dto.nameEn?.trim() || null,
         slug: dto.slug === undefined ? undefined : slugify(dto.slug),
         parentId,
+        imageUrl:
+          dto.imageUrl === undefined
+            ? undefined
+            : dto.imageUrl?.trim() || null,
         sortOrder: dto.sortOrder,
         isActive: dto.isActive,
       },
+      include: {
+        parent: { select: { id: true, nameAr: true, slug: true } },
+        _count: { select: { products: true, children: true } },
+      },
+    });
+  }
+
+  async uploadImage(id: string, file: UploadedImageFile) {
+    await this.findOne(id);
+    const dir = join(process.cwd(), 'uploads', 'categories');
+    const saved = await saveUploadAsWebp(file, dir, '/uploads/categories', {
+      width: 1200,
+      height: 1500,
+      fit: 'cover',
+    });
+    return this.prisma.category.update({
+      where: { id },
+      data: { imageUrl: saved.url },
+      include: {
+        parent: { select: { id: true, nameAr: true, slug: true } },
+        _count: { select: { products: true, children: true } },
+      },
+    });
+  }
+
+  async clearImage(id: string) {
+    await this.findOne(id);
+    return this.prisma.category.update({
+      where: { id },
+      data: { imageUrl: null },
       include: {
         parent: { select: { id: true, nameAr: true, slug: true } },
         _count: { select: { products: true, children: true } },

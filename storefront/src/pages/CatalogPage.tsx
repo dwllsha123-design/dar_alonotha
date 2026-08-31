@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
 import { ProductGrid } from '../components/ProductCard';
-import { categoryImage } from '../data/catalog';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
 const titles: Record<string, string> = {
@@ -217,18 +216,25 @@ export function CategoriesPage() {
       </div>
       <div className="cat-grid">
         {categories.map((c) => (
-          <Link key={c.id} to={`/category/${c.slug}`} className="cat-tile">
+          <Link
+            key={c.id}
+            to={`/category/${c.slug}`}
+            className={c.imageUrl ? 'cat-tile' : 'cat-tile text-only'}
+          >
             <div className="cat-tile-media">
-              <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+              {c.imageUrl ? (
+                <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
+              ) : (
+                <h3>{c.nameAr}</h3>
+              )}
             </div>
-            <h3>{c.nameAr}</h3>
+            {c.imageUrl ? <h3>{c.nameAr}</h3> : null}
           </Link>
         ))}
-        <Link to="/new" className="cat-tile">
+        <Link to="/new" className="cat-tile text-only">
           <div className="cat-tile-media">
-            <img src="/home/coming-soon.jpg" alt="وصل حديثاً" loading="lazy" decoding="async" />
+            <h3>وصل حديثاً</h3>
           </div>
-          <h3>وصل حديثاً</h3>
         </Link>
         <Link to="/offers" className="cat-tile offer-tile">
           <div className="cat-tile-media">
@@ -236,11 +242,10 @@ export function CategoriesPage() {
             <p>اكتشفي أحدث التخفيضات</p>
           </div>
         </Link>
-        <Link to="/bestseller" className="cat-tile">
+        <Link to="/bestseller" className="cat-tile text-only">
           <div className="cat-tile-media">
-            <img src="/home/product-kaftan-34.jpg" alt="الأكثر مبيعاً" loading="lazy" decoding="async" />
+            <h3>الأكثر مبيعاً</h3>
           </div>
-          <h3>الأكثر مبيعاً</h3>
         </Link>
       </div>
     </section>

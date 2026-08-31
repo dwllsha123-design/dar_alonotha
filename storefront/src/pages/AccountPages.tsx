@@ -5,7 +5,6 @@ import { useAuth } from '../auth/AuthContext';
 import { useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
 import type { StoreProduct } from '../api/client';
-import { categoryImage } from '../data/catalog';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
 export function AccountPage() {
@@ -326,18 +325,25 @@ export function SearchPage() {
       </h3>
       <div className="cat-grid">
         {categories.slice(0, 4).map((c) => (
-          <Link key={c.id} to={`/category/${c.slug}`} className="cat-tile">
+          <Link
+            key={c.id}
+            to={`/category/${c.slug}`}
+            className={c.imageUrl ? 'cat-tile' : 'cat-tile text-only'}
+          >
             <div className="cat-tile-media">
-              <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+              {c.imageUrl ? (
+                <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
+              ) : (
+                <h3>{c.nameAr}</h3>
+              )}
             </div>
-            <h3>{c.nameAr}</h3>
+            {c.imageUrl ? <h3>{c.nameAr}</h3> : null}
           </Link>
         ))}
-        <Link to="/new" className="cat-tile">
+        <Link to="/new" className="cat-tile text-only">
           <div className="cat-tile-media">
-            <img src="/home/coming-soon.jpg" alt="وصلنا حديثاً" loading="lazy" decoding="async" />
+            <h3>وصلنا حديثاً</h3>
           </div>
-          <h3>وصلنا حديثاً</h3>
         </Link>
         <Link to="/offers" className="cat-tile offer-tile">
           <div className="cat-tile-media">

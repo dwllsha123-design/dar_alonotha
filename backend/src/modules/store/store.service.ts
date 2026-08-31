@@ -213,6 +213,7 @@ export class StoreService {
         nameAr: true,
         nameEn: true,
         slug: true,
+        imageUrl: true,
         sortOrder: true,
       },
     });

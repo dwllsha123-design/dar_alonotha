@@ -38,6 +38,7 @@ export type CategoryRow = {
   id: string;
   parentId: string | null;
   nameAr: string;
+  imageUrl?: string | null;
   isActive: boolean;
 };
 

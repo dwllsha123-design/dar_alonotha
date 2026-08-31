@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { api } from '@/api/client';
+import { api, apiUpload } from '@/api/client';
 
 type Category = {
   id: string;
   parentId: string | null;
   nameAr: string;
   slug: string;
+  imageUrl?: string | null;
   sortOrder: number;
   isActive: boolean;
   parent?: { id: string; nameAr: string; slug: string } | null;
@@ -19,6 +20,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [catTab, setCatTab] = useState<CatTab>('parents');
   const [nameAr, setNameAr] = useState('');
@@ -139,6 +141,39 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
     }
   }
 
+  async function uploadImage(c: Category, file: File | undefined) {
+    if (!file) return;
+    setError('');
+    setMsg('');
+    setUploadingId(c.id);
+    try {
+      await apiUpload(`/categories/${c.id}/image`, file);
+      setMsg(`تم رفع صورة «${c.nameAr}»`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل رفع الصورة');
+    } finally {
+      setUploadingId(null);
+    }
+  }
+
+  async function clearImage(c: Category) {
+    if (!c.imageUrl) return;
+    if (!confirm(`إزالة صورة «${c.nameAr}»؟`)) return;
+    setError('');
+    setMsg('');
+    setUploadingId(c.id);
+    try {
+      await api(`/categories/${c.id}/image`, { method: 'DELETE' });
+      setMsg('تم إزالة الصورة');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل إزالة الصورة');
+    } finally {
+      setUploadingId(null);
+    }
+  }
+
   async function moveRow(c: Category, dir: -1 | 1) {
     const siblings = rows
       .filter((r) => (r.parentId || '') === (c.parentId || ''))
@@ -169,7 +204,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
       {embedded ? null : (
         <div className="page-title">
           <h1>الفئات والأصناف</h1>
-          <p>أضيفي فئة رئيسية ثم أصنافاً تابعة لها. تظهر في المتجر فوراً.</p>
+          <p>أضيفي فئة رئيسية ثم أصنافاً تابعة لها. ارفعي صورة لكل فئة لتظهر في المتجر.</p>
         </div>
       )}
 
@@ -243,6 +278,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
         <table>
           <thead>
             <tr>
+              <th>الصورة</th>
               <th>الاسم</th>
               {catTab === 'children' ? <th>الفئة</th> : null}
               <th>منتجات</th>
@@ -255,8 +291,44 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
             {visible.map((c) => {
               const d = drafts[c.id];
               if (!d) return null;
+              const busyImg = uploadingId === c.id;
               return (
                 <tr key={c.id}>
+                  <td>
+                    <div className="cat-image-cell">
+                      {c.imageUrl ? (
+                        <img src={c.imageUrl} alt="" className="cat-image-thumb" />
+                      ) : (
+                        <span className="cat-image-empty muted">بدون صورة</span>
+                      )}
+                      <div className="toolbar" style={{ gap: 6, flexWrap: 'wrap' }}>
+                        <label className="btn ghost" style={{ cursor: busyImg ? 'wait' : 'pointer' }}>
+                          {busyImg ? '...' : c.imageUrl ? 'تغيير' : 'رفع'}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            hidden
+                            disabled={busyImg}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              void uploadImage(c, file);
+                            }}
+                          />
+                        </label>
+                        {c.imageUrl ? (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            disabled={busyImg}
+                            onClick={() => void clearImage(c)}
+                          >
+                            إزالة
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </td>
                   <td>
                     <input
                       value={d.nameAr}
@@ -302,7 +374,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
             })}
             {!visible.length ? (
               <tr>
-                <td colSpan={catTab === 'children' ? 6 : 5} className="muted">
+                <td colSpan={catTab === 'children' ? 7 : 6} className="muted">
                   {catTab === 'parents'
                     ? 'لا توجد فئات بعد — أضيفي أول فئة من النموذج أعلاه.'
                     : 'لا توجد أصناف بعد — أضيفي صنفاً واربطيه بفئة.'}

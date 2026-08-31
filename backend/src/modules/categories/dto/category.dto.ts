@@ -18,6 +18,10 @@ export class CreateCategoryDto {
   parentId?: string | null;
 
   @IsOptional()
+  @IsString()
+  imageUrl?: string | null;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -44,6 +48,10 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsString()
   parentId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string | null;
 
   @IsOptional()
   @Type(() => Number)

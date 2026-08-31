@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
 import { ProductGrid } from '../components/ProductCard';
 import { StoreLink } from '../components/StoreLink';
-import { categoryImage } from '../data/catalog';
 import { HERO_SLIDES, HOME_IMAGES } from '../data/homeImages';
 import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
@@ -73,7 +72,7 @@ export function HomePage() {
     return () => window.clearInterval(timer);
   }, [heroSlides.length]);
 
-  const featured = categories.slice(0, 4);
+  const featured = categories.filter((c) => !c.parentId).slice(0, 4);
 
   return (
     <>
@@ -191,9 +190,19 @@ export function HomePage() {
               <Link
                 key={c.id}
                 to={`/category/${c.slug}`}
-                className={idx === 0 ? 'bento-card span-2' : 'bento-card'}
+                className={
+                  c.imageUrl
+                    ? idx === 0
+                      ? 'bento-card span-2'
+                      : 'bento-card'
+                    : idx === 0
+                      ? 'bento-card text-tile span-2'
+                      : 'bento-card text-tile'
+                }
               >
-                <img src={categoryImage(c.slug)} alt={c.nameAr} loading="lazy" decoding="async" />
+                {c.imageUrl ? (
+                  <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
+                ) : null}
                 <div className="label">
                   <h3 className="headline-md" style={{ margin: 0 }}>
                     {c.nameAr}
