@@ -5,6 +5,7 @@ import { ProductGrid } from '../components/ProductCard';
 import { HERO_SLIDES } from '../data/homeImages';
 import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { useLocale } from '../i18n/LocaleContext';
 
 type Banner = {
   id: string;
@@ -27,6 +28,7 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export function HomePage() {
+  const { t } = useLocale();
   const [newItems, setNewItems] = useState<StoreProduct[]>([]);
   const [bestsellers, setBestsellers] = useState<StoreProduct[]>([]);
   const [offers, setOffers] = useState<StoreProduct[]>([]);
@@ -85,9 +87,8 @@ export function HomePage() {
   }, [heroSlides.length]);
 
   return (
-    <div className="shop-home">
-      {/* Compact promo banner only — no intro/about homepage */}
-      <section className="shop-hero" aria-label="عرض ترويجي">
+    <div className="shop-home pb-home">
+      <section className="shop-hero pb-banner" aria-label="عرض ترويجي">
         <div className="shop-hero-media">
           {heroSlides.map((slide, i) => (
             <Link
@@ -99,7 +100,7 @@ export function HomePage() {
             >
               <img
                 src={slide.src}
-                alt={slide.alt || 'دار الأنوثة'}
+                alt={slide.alt || t('brand')}
                 decoding="async"
                 loading={i === 0 ? 'eager' : 'lazy'}
                 style={{
@@ -127,15 +128,14 @@ export function HomePage() {
         ) : null}
       </section>
 
-      {/* Categories first — Play Baby style */}
-      <section className="container shop-section">
-        <div className="shop-section-head">
+      <section className="container shop-section pb-section">
+        <div className="shop-section-head pb-section-head">
           <p className="shop-kicker">تسوقي حسب التصنيف</p>
-          <h2>التصنيفات</h2>
+          <h2>{t('categories')}</h2>
         </div>
-        <div className="category-mosaic">
+        <div className="category-mosaic pb-cat-grid">
           {parentCategories.map((c) => (
-            <Link key={c.id} to={`/category/${c.slug}`} className="category-tile">
+            <Link key={c.id} to={`/category/${c.slug}`} className="category-tile pb-cat-tile">
               <span className="category-tile-media">
                 {c.imageUrl ? (
                   <img src={c.imageUrl} alt="" loading="lazy" decoding="async" />
@@ -148,33 +148,33 @@ export function HomePage() {
               <span className="category-tile-label">{c.nameAr}</span>
             </Link>
           ))}
-          <Link to="/offers" className="category-tile offer">
+          <Link to="/offers" className="category-tile offer pb-cat-tile">
             <span className="category-tile-media">
               <span className="material-symbols-outlined">sell</span>
             </span>
-            <span className="category-tile-label">العروض</span>
+            <span className="category-tile-label">{t('offers')}</span>
           </Link>
-          <Link to="/new" className="category-tile">
+          <Link to="/new" className="category-tile pb-cat-tile">
             <span className="category-tile-media">
               <span className="material-symbols-outlined">new_releases</span>
             </span>
-            <span className="category-tile-label">وصل حديثاً</span>
+            <span className="category-tile-label">{t('newArrivals')}</span>
           </Link>
-          <Link to="/bestseller" className="category-tile">
+          <Link to="/bestseller" className="category-tile pb-cat-tile">
             <span className="category-tile-media">
               <span className="material-symbols-outlined">trending_up</span>
             </span>
-            <span className="category-tile-label">الأكثر مبيعاً</span>
+            <span className="category-tile-label">{t('bestsellers')}</span>
           </Link>
         </div>
       </section>
 
-      <section className="container shop-section">
-        <div className="shop-section-head">
+      <section className="container shop-section pb-section">
+        <div className="shop-section-head pb-section-head">
           <p className="shop-kicker">شاهدي مجموعتنا الجديدة</p>
           <h2>{SITE_COPY.newArrivals}</h2>
           <Link to="/new" className="shop-section-link">
-            عرض الكل
+            {t('viewAll')}
           </Link>
         </div>
         {newItems.length ? (
@@ -183,19 +183,19 @@ export function HomePage() {
           <div className="shop-empty">
             <p>{SITE_COPY.newArrivalsEmpty}</p>
             <Link className="btn soft" to="/products">
-              تصفّحي المتجر
+              {t('shop')}
             </Link>
           </div>
         )}
       </section>
 
       {bestsellers.length ? (
-        <section className="container shop-section">
-          <div className="shop-section-head">
+        <section className="container shop-section pb-section">
+          <div className="shop-section-head pb-section-head">
             <p className="shop-kicker">شاهدي مجموعتنا</p>
-            <h2>الأكثر مبيعاً</h2>
+            <h2>{t('bestsellers')}</h2>
             <Link to="/bestseller" className="shop-section-link">
-              عرض الكل
+              {t('viewAll')}
             </Link>
           </div>
           <ProductGrid products={bestsellers.slice(0, 8)} />
@@ -203,12 +203,12 @@ export function HomePage() {
       ) : null}
 
       {offers.length ? (
-        <section className="container shop-section">
-          <div className="shop-section-head">
+        <section className="container shop-section pb-section">
+          <div className="shop-section-head pb-section-head">
             <p className="shop-kicker">خصومات دار الأنوثة</p>
-            <h2>العروض</h2>
+            <h2>{t('offers')}</h2>
             <Link to="/offers" className="shop-section-link">
-              كل العروض
+              {t('viewAll')}
             </Link>
           </div>
           <ProductGrid products={offers.slice(0, 8)} />
