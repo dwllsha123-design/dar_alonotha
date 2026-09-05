@@ -213,17 +213,38 @@ export function CatalogPage({
         <div className="subcategory-pills" aria-label="الأصناف">
           <Link
             to={`/category/${activeParent?.slug}`}
-            className={!currentCategory?.parentId ? 'active' : ''}
+            className={`subcat-chip${!currentCategory?.parentId ? ' active' : ''}`}
           >
-            كل الأصناف
+            <span className="subcat-chip-media" aria-hidden>
+              {activeParent?.imageUrl ? (
+                <img src={activeParent.imageUrl} alt="" loading="lazy" decoding="async" />
+              ) : (
+                <span className="material-symbols-outlined">apps</span>
+              )}
+            </span>
+            <span className="subcat-chip-label">كل الأصناف</span>
           </Link>
           {childCategories.map((c) => (
             <Link
               key={c.id}
               to={`/category/${c.slug}`}
-              className={slug === c.slug ? 'active' : ''}
+              className={`subcat-chip${slug === c.slug ? ' active' : ''}`}
             >
-              {c.nameAr}
+              <span className="subcat-chip-media" aria-hidden>
+                {c.imageUrl ? (
+                  <img src={c.imageUrl} alt="" loading="lazy" decoding="async" />
+                ) : (
+                  <span className="material-symbols-outlined">
+                    {CATEGORY_ICONS[c.slug] ||
+                      (c.slug.includes('large') || c.nameAr.includes('كبير')
+                        ? 'straighten'
+                        : c.slug.includes('small') || c.nameAr.includes('صغير')
+                          ? 'compress'
+                          : 'category')}
+                  </span>
+                )}
+              </span>
+              <span className="subcat-chip-label">{c.nameAr}</span>
             </Link>
           ))}
         </div>

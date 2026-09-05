@@ -826,26 +826,78 @@ img { max-width: 100%; height: auto; display: block; background: transparent; }
 /* Subcategory (أصناف) pills under a parent category */
 .subcategory-pills {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   overflow-x: auto;
-  padding: 0 2px 16px;
+  padding: 4px 2px 18px;
   margin-bottom: 4px;
   scrollbar-width: none;
 }
 .subcategory-pills::-webkit-scrollbar { display: none; }
-.subcategory-pills a {
+.subcategory-pills a,
+.subcat-chip {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   text-decoration: none;
-  padding: 8px 16px;
+  padding: 6px 14px 6px 6px;
   border-radius: 999px;
   border: 1px solid var(--outline-variant);
   background: var(--surface);
   color: var(--on-surface-variant);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   white-space: nowrap;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
 }
-.subcategory-pills a.active {
+.subcat-chip-media {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface-high);
+  border: 1px solid var(--outline-variant);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.subcat-chip-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.subcat-chip-media .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--primary);
+}
+.subcat-chip-label {
+  padding-inline-end: 4px;
+}
+.subcategory-pills a.active,
+.subcat-chip.active {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+.subcat-chip.active .subcat-chip-media {
+  border-color: color-mix(in srgb, var(--on-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--on-primary) 12%, transparent);
+}
+.subcat-chip.active .subcat-chip-media .material-symbols-outlined {
+  color: var(--on-primary);
+}
+
+.pb-skin .subcat-chip {
+  background: #141414;
+  border-color: #2a2a2a;
+  color: #d0d0d0;
+}
+.pb-skin .subcat-chip-media {
+  background: #1a1a1a;
+  border-color: #333;
+}
+.pb-skin .subcat-chip.active {
   background: var(--primary);
   color: var(--on-primary);
   border-color: var(--primary);
