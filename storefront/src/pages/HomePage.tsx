@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
 import { ProductGrid } from '../components/ProductCard';
-import { StoreLink } from '../components/StoreLink';
-import { HERO_SLIDES, HOME_IMAGES } from '../data/homeImages';
+import { HERO_SLIDES } from '../data/homeImages';
 import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
@@ -20,6 +19,13 @@ type Banner = {
   imagePosY?: number;
 };
 
+const CATEGORY_ICONS: Record<string, string> = {
+  lingerie: 'checkroom',
+  underwear: 'apparel',
+  robes: 'styler',
+  wigs: 'face_3',
+};
+
 export function HomePage() {
   const [newItems, setNewItems] = useState<StoreProduct[]>([]);
   const [bestsellers, setBestsellers] = useState<StoreProduct[]>([]);
@@ -28,8 +34,12 @@ export function HomePage() {
   const [heroIndex, setHeroIndex] = useState(0);
   const categories = useStoreCategories();
 
+  const parentCategories = useMemo(
+    () => categories.filter((c) => !c.parentId),
+    [categories],
+  );
+
   const heroBanners = banners.filter((b) => b.placement === 'HERO' && b.imageUrl);
-  const promoBanners = banners.filter((b) => b.placement !== 'HERO');
   const heroSlides =
     heroBanners.length > 0
       ? heroBanners.map((b) => ({
@@ -40,6 +50,7 @@ export function HomePage() {
           zoom: b.imageZoom ?? 100,
           x: b.imagePosX ?? 50,
           y: b.imagePosY ?? 50,
+          href: b.linkUrl || '/products',
         }))
       : HERO_SLIDES.map((src) => ({
           id: src,
@@ -49,6 +60,7 @@ export function HomePage() {
           zoom: 100,
           x: 50,
           y: 50,
+          href: '/products',
         }));
 
   useEffect(() => {
@@ -72,30 +84,36 @@ export function HomePage() {
     return () => window.clearInterval(timer);
   }, [heroSlides.length]);
 
-  const featured = categories.filter((c) => !c.parentId).slice(0, 4);
-
   return (
-    <>
-      <section className="hero-ly">
-        <div className="hero-ly-media">
+    <div className="shop-home">
+      {/* Compact promo banner only — no intro/about homepage */}
+      <section className="shop-hero" aria-label="عرض ترويجي">
+        <div className="shop-hero-media">
           {heroSlides.map((slide, i) => (
-            <img
+            <Link
               key={slide.id}
-              className={`hero-ly-slide${i === heroIndex ? ' is-active' : ''}`}
-              src={slide.src}
-              alt={slide.alt}
-              decoding="async"
-              loading={i === 0 ? 'eager' : 'lazy'}
-              style={{
-                objectFit: slide.fit,
-                objectPosition: `${slide.x}% ${slide.y}%`,
-                transform: `scale(${slide.zoom / 100})`,
-                transformOrigin: `${slide.x}% ${slide.y}%`,
-              }}
-            />
+              to={slide.href}
+              className={`shop-hero-slide${i === heroIndex ? ' is-active' : ''}`}
+              tabIndex={i === heroIndex ? 0 : -1}
+              aria-hidden={i !== heroIndex}
+            >
+              <img
+                src={slide.src}
+                alt={slide.alt || 'دار الأنوثة'}
+                decoding="async"
+                loading={i === 0 ? 'eager' : 'lazy'}
+                style={{
+                  objectFit: slide.fit,
+                  objectPosition: `${slide.x}% ${slide.y}%`,
+                  transform: `scale(${slide.zoom / 100})`,
+                  transformOrigin: `${slide.x}% ${slide.y}%`,
+                }}
+              />
+            </Link>
           ))}
-          <div className="hero-ly-overlay" />
-          <div className="hero-dots" aria-hidden>
+        </div>
+        {heroSlides.length > 1 ? (
+          <div className="shop-hero-dots" aria-hidden>
             {heroSlides.map((slide, i) => (
               <button
                 key={slide.id}
@@ -106,176 +124,96 @@ export function HomePage() {
               />
             ))}
           </div>
+        ) : null}
+      </section>
+
+      {/* Categories first — Play Baby style */}
+      <section className="container shop-section">
+        <div className="shop-section-head">
+          <p className="shop-kicker">تسوقي حسب التصنيف</p>
+          <h2>التصنيفات</h2>
         </div>
-        <div className="hero-ly-cta">
-          <Link className="btn hero-ly-btn" to="/products">
-            {SITE_COPY.heroCta}
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-              arrow_back
+        <div className="category-mosaic">
+          {parentCategories.map((c) => (
+            <Link key={c.id} to={`/category/${c.slug}`} className="category-tile">
+              <span className="category-tile-media">
+                {c.imageUrl ? (
+                  <img src={c.imageUrl} alt="" loading="lazy" decoding="async" />
+                ) : (
+                  <span className="material-symbols-outlined">
+                    {CATEGORY_ICONS[c.slug] || 'category'}
+                  </span>
+                )}
+              </span>
+              <span className="category-tile-label">{c.nameAr}</span>
+            </Link>
+          ))}
+          <Link to="/offers" className="category-tile offer">
+            <span className="category-tile-media">
+              <span className="material-symbols-outlined">sell</span>
             </span>
+            <span className="category-tile-label">العروض</span>
+          </Link>
+          <Link to="/new" className="category-tile">
+            <span className="category-tile-media">
+              <span className="material-symbols-outlined">new_releases</span>
+            </span>
+            <span className="category-tile-label">وصل حديثاً</span>
+          </Link>
+          <Link to="/bestseller" className="category-tile">
+            <span className="category-tile-media">
+              <span className="material-symbols-outlined">trending_up</span>
+            </span>
+            <span className="category-tile-label">الأكثر مبيعاً</span>
           </Link>
         </div>
       </section>
 
-      <section className="container section">
-        <div className="section-head">
-          <div>
-            <h2 className="headline-lg">{SITE_COPY.newArrivals}</h2>
-          </div>
-          <Link className="label-md" to="/new" style={{ color: 'var(--primary)' }}>
-            عرض المزيد
+      <section className="container shop-section">
+        <div className="shop-section-head">
+          <p className="shop-kicker">شاهدي مجموعتنا الجديدة</p>
+          <h2>{SITE_COPY.newArrivals}</h2>
+          <Link to="/new" className="shop-section-link">
+            عرض الكل
           </Link>
         </div>
         {newItems.length ? (
-          <ProductGrid products={newItems.slice(0, 4)} />
+          <ProductGrid products={newItems.slice(0, 8)} />
         ) : (
-          <div className="coming-soon-banner panel">
-            <img src={HOME_IMAGES.comingSoon} alt="" loading="lazy" decoding="async" />
-            <div>
-              <span className="chip-new">{SITE_COPY.comingSoon}</span>
-              <p className="body-lg" style={{ margin: '8px 0 0' }}>
-                {SITE_COPY.newArrivalsEmpty}
-              </p>
-              <Link className="btn secondary" to="/products" style={{ marginTop: 16 }}>
-                تصفّحي المتجر
-              </Link>
-            </div>
+          <div className="shop-empty">
+            <p>{SITE_COPY.newArrivalsEmpty}</p>
+            <Link className="btn soft" to="/products">
+              تصفّحي المتجر
+            </Link>
           </div>
         )}
       </section>
 
-      <section className="story-lux">
-        <div className="container story-lux-grid">
-          <div className="story-lux-photo">
-            <img src={HOME_IMAGES.comingSoon} alt="أزياء دار الأنوثة" />
-          </div>
-          <div className="story-lux-copy">
-            <span className="kicker">{SITE_COPY.storyKicker}</span>
-            <h2 className="headline-lg">{SITE_COPY.storyTitle}</h2>
-            <p className="body-lg">{SITE_COPY.storyBody}</p>
-            <Link className="btn secondary" to="/about">
-              {SITE_COPY.storyCta}
+      {bestsellers.length ? (
+        <section className="container shop-section">
+          <div className="shop-section-head">
+            <p className="shop-kicker">شاهدي مجموعتنا</p>
+            <h2>الأكثر مبيعاً</h2>
+            <Link to="/bestseller" className="shop-section-link">
+              عرض الكل
             </Link>
           </div>
-        </div>
-      </section>
-
-      {promoBanners.length ? (
-        <section className="container section">
-          <div className="banner-row">
-            {promoBanners.map((b) => (
-              <StoreLink key={b.id} className="banner-card" to={b.linkUrl || '/offers'}>
-                {b.imageUrl ? (
-                  <img src={b.imageUrl} alt="" loading="lazy" decoding="async" />
-                ) : (
-                  <div className="banner-fallback" />
-                )}
-                <div className="label">
-                  <h3 className="headline-md" style={{ margin: 0 }}>
-                    {b.title}
-                  </h3>
-                  {b.subtitle ? <p className="body-md">{b.subtitle}</p> : null}
-                </div>
-              </StoreLink>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {featured.length ? (
-        <section className="container section">
-          <h2 className="headline-lg section-title">تسوقي حسب الفئة</h2>
-          <div className="bento">
-            {featured.map((c, idx) => (
-              <Link
-                key={c.id}
-                to={`/category/${c.slug}`}
-                className={
-                  c.imageUrl
-                    ? idx === 0
-                      ? 'bento-card span-2'
-                      : 'bento-card'
-                    : idx === 0
-                      ? 'bento-card text-tile span-2'
-                      : 'bento-card text-tile'
-                }
-              >
-                {c.imageUrl ? (
-                  <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
-                ) : null}
-                <div className="label">
-                  <h3 className="headline-md" style={{ margin: 0 }}>
-                    {c.nameAr}
-                  </h3>
-                </div>
-              </Link>
-            ))}
-            <Link to="/offers" className="bento-card offer">
-              <div className="label">
-                <span className="material-symbols-outlined" style={{ fontSize: 36, marginBottom: 8 }}>
-                  local_offer
-                </span>
-                <h3 className="headline-md" style={{ margin: 0 }}>
-                  عروض
-                </h3>
-              </div>
-            </Link>
-          </div>
+          <ProductGrid products={bestsellers.slice(0, 8)} />
         </section>
       ) : null}
 
       {offers.length ? (
-        <section className="container section">
-          <div className="section-head">
-            <div>
-              <h2 className="headline-lg">العروض الحالية</h2>
-            </div>
-            <Link className="label-md" to="/offers" style={{ color: 'var(--primary)' }}>
+        <section className="container shop-section">
+          <div className="shop-section-head">
+            <p className="shop-kicker">خصومات دار الأنوثة</p>
+            <h2>العروض</h2>
+            <Link to="/offers" className="shop-section-link">
               كل العروض
             </Link>
           </div>
-          <ProductGrid products={offers.slice(0, 4)} />
+          <ProductGrid products={offers.slice(0, 8)} />
         </section>
       ) : null}
-
-      {bestsellers.length ? (
-        <section className="container section">
-          <div className="section-head">
-            <div>
-              <h2 className="headline-lg">الأكثر مبيعاً</h2>
-            </div>
-            <Link className="label-md" to="/bestseller" style={{ color: 'var(--primary)' }}>
-              عرض الكل
-            </Link>
-          </div>
-          <ProductGrid products={bestsellers.slice(0, 4)} />
-        </section>
-      ) : null}
-
-      <section className="container section">
-        <div className="trust-strip">
-          <div className="trust-item">
-            <span className="material-symbols-outlined">local_shipping</span>
-            <h3>توصيل داخل ليبيا</h3>
-            <p>نوصل طلباتك إلى مختلف المدن الليبية حسب المنطقة.</p>
-          </div>
-          <div className="trust-item">
-            <span className="material-symbols-outlined">lock</span>
-            <h3>خصوصية تامة</h3>
-            <p>نحرص على تغليف طلبك بطريقة تحافظ على خصوصيتك.</p>
-          </div>
-          <div className="trust-item">
-            <span className="material-symbols-outlined">verified</span>
-            <h3>جودة مختارة</h3>
-            <p>منتجات منتقاة بعناية لتليق بأنوثتك.</p>
-          </div>
-          <div className="trust-item">
-            <span className="material-symbols-outlined">support_agent</span>
-            <h3>دعم العملاء</h3>
-            <p>فريقنا جاهز لمساعدتكِ في أي استفسار.</p>
-          </div>
-        </div>
-      </section>
-    </>
+    </div>
   );
 }

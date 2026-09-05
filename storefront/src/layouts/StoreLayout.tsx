@@ -6,6 +6,7 @@ import { NewsletterForm } from '../components/NewsletterForm';
 import { CartDrawer } from '../components/CartDrawer';
 import { SearchOverlay } from '../components/SearchOverlay';
 import { SizeGuideModal } from '../components/SizeGuide';
+import { FloatingActions } from '../components/FloatingActions';
 import {
   SITE_COPY,
   STORE_LOCATION,
@@ -352,6 +353,7 @@ export function StoreLayout() {
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
       <SizeGuideModal open={sizeOpen} onClose={() => setSizeOpen(false)} />
+      <FloatingActions />
     </div>
   );
 }

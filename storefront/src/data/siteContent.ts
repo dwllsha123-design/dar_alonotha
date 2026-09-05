@@ -4,6 +4,9 @@ export const STORE_PHONE_LINKS = [
   { label: '0921820999', href: 'tel:0921820999' },
   { label: '0924443839', href: 'tel:0924443839' },
 ] as const;
+/** Libya WhatsApp — local 0924443839 → international 218924443839 */
+export const STORE_WHATSAPP = '0924443839';
+export const STORE_WHATSAPP_LINK = 'https://wa.me/218924443839';
 export const STORE_LOCATION = 'طرابلس — ليبيا';
 export const STORE_EMAIL = 'info@daralonotha.com';
 
