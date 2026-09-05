@@ -58,11 +58,13 @@ export function StoreLayout() {
   const drawerLinks = useMemo(
     () => [
       { to: '/new', label: 'وصلنا حديثاً', icon: 'new_releases' },
-      ...categories.map((c) => ({
-        to: `/category/${c.slug}`,
-        label: c.nameAr,
-        icon: CATEGORY_ICONS[c.slug] || 'category',
-      })),
+      ...categories
+        .filter((c) => !c.parentId)
+        .map((c) => ({
+          to: `/category/${c.slug}`,
+          label: c.nameAr,
+          icon: CATEGORY_ICONS[c.slug] || 'category',
+        })),
       { to: '/offers', label: 'العروض', icon: 'sell' },
       { to: '/bestseller', label: 'الأكثر مبيعاً', icon: 'trending_up' },
       { to: '/wishlist', label: 'المفضلة', icon: 'favorite' },

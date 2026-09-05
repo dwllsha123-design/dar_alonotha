@@ -7,7 +7,15 @@ import { storeColorHex } from '../lib/colors';
 const SIZE_LIMIT = 4;
 const COLOR_LIMIT = 5;
 
-export function ProductCard({ product }: { product: StoreProduct }) {
+export type CatalogViewMode = 'grid' | 'list';
+
+export function ProductCard({
+  product,
+  viewMode = 'grid',
+}: {
+  product: StoreProduct;
+  viewMode?: CatalogViewMode;
+}) {
   const fav = useFavorites();
   const { add } = useCart();
   const [added, setAdded] = useState(false);
@@ -60,8 +68,10 @@ export function ProductCard({ product }: { product: StoreProduct }) {
     window.setTimeout(() => setAdded(false), 1600);
   }
 
+  const isList = viewMode === 'list';
+
   return (
-    <article className={`product-card${soldOut ? ' is-out' : ''}`}>
+    <article className={`product-card${soldOut ? ' is-out' : ''}${isList ? ' is-list' : ''}`}>
       <div className="thumb">
         <Link to={`/product/${product.id}`} className="thumb-link" aria-label={product.nameAr}>
           {img ? (
@@ -106,6 +116,10 @@ export function ProductCard({ product }: { product: StoreProduct }) {
         <Link to={`/product/${product.id}`} className="name">
           {product.nameAr}
         </Link>
+
+        {product.category?.nameAr ? (
+          <span className="card-cat">{product.category.nameAr}</span>
+        ) : null}
 
         {sizes.length ? (
           <div className="card-meta" aria-label="المقاسات">
@@ -155,6 +169,9 @@ export function ProductCard({ product }: { product: StoreProduct }) {
 
         {!soldOut && stockVariant?.inStock ? (
           <button className="card-add" type="button" onClick={quickAdd}>
+            <span className="material-symbols-outlined" aria-hidden>
+              add_shopping_cart
+            </span>
             {added ? 'تمت الإضافة' : 'إضافة إلى السلة'}
           </button>
         ) : (
@@ -167,12 +184,18 @@ export function ProductCard({ product }: { product: StoreProduct }) {
   );
 }
 
-export function ProductGrid({ products }: { products: StoreProduct[] }) {
+export function ProductGrid({
+  products,
+  viewMode = 'grid',
+}: {
+  products: StoreProduct[];
+  viewMode?: CatalogViewMode;
+}) {
   if (!products.length) return <div className="empty">لا توجد منتجات حالياً</div>;
   return (
-    <div className="grid-products">
+    <div className={viewMode === 'list' ? 'list-products' : 'grid-products'}>
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} />
+        <ProductCard key={p.id} product={p} viewMode={viewMode} />
       ))}
     </div>
   );

@@ -6,7 +6,7 @@ export type StoreProduct = {
   description?: string | null;
   brand?: string | null;
   sku?: string | null;
-  category?: { id: string; nameAr: string; slug: string } | null;
+  category?: { id: string; nameAr: string; slug: string; parentId?: string | null } | null;
   retailPrice: number;
   compareAtPrice: number | null;
   discountPercent: number;

@@ -34,7 +34,7 @@ type PublicProduct = {
   description?: string | null;
   brand?: string | null;
   sku?: string | null;
-  category?: { id: string; nameAr: string; slug: string } | null;
+  category?: { id: string; nameAr: string; slug: string; parentId?: string | null } | null;
   retailPrice: number;
   compareAtPrice: number | null;
   discountPercent: number;
@@ -231,7 +231,7 @@ export class StoreService {
       basePrice: Prisma.Decimal | number;
       currency: string;
       createdAt: Date;
-      category: { id: string; nameAr: string; slug: string } | null;
+      category: { id: string; nameAr: string; slug: string; parentId?: string | null } | null;
       images: Array<{
         url: string;
         alt: string | null;
@@ -309,7 +309,7 @@ export class StoreService {
 
   private productInclude() {
     return {
-      category: { select: { id: true, nameAr: true, slug: true } },
+      category: { select: { id: true, nameAr: true, slug: true, parentId: true } },
       images: true,
       variants: { where: { isActive: true } },
     } as const;
@@ -331,7 +331,24 @@ export class StoreService {
     }
 
     if (filters?.category) {
-      where.category = { slug: filters.category };
+      const cat = await this.prisma.category.findFirst({
+        where: { slug: filters.category, isActive: true },
+        select: {
+          slug: true,
+          children: {
+            where: { isActive: true },
+            select: { slug: true },
+          },
+        },
+      });
+      if (cat?.children.length) {
+        // Parent category: include its subcategories (الأصناف)
+        where.category = {
+          slug: { in: [cat.slug, ...cat.children.map((c) => c.slug)] },
+        };
+      } else {
+        where.category = { slug: filters.category };
+      }
     }
 
     if (filters?.collection === 'offers') {
