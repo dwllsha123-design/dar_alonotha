@@ -45,7 +45,7 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 # Final generate on the runtime Linux image (ensures query engine for debian-openssl-3.0.x)
 RUN chmod +x docker-entrypoint.sh \
-  && mkdir -p /data /app/uploads/products /app/uploads/banners \
+  && mkdir -p /data /app/uploads/products /app/uploads/banners /app/uploads/categories \
   && npx prisma generate
 
 EXPOSE 3000

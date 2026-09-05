@@ -1,6 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
-import { useTheme } from '../../theme/ThemeContext';
 import { STORE_LOCATION, STORE_PHONES } from '../../data/siteContent';
 import type { StoreCategory } from '../../data/catalog';
 
@@ -19,13 +18,10 @@ type Props = {
 
 export function MobileMenu({ open, onClose, categories }: Props) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
 
   const links = [
     { to: '/', label: 'الرئيسية', icon: 'home' },
     { to: '/products', label: 'المتجر', icon: 'storefront' },
-    { to: '/new', label: 'جديدنا', icon: 'new_releases' },
-    { to: '/bestseller', label: 'الأكثر مبيعًا', icon: 'trending_up' },
     { to: '/categories', label: 'التصنيفات', icon: 'category' },
     ...categories
       .filter((c) => !c.parentId)
@@ -83,10 +79,6 @@ export function MobileMenu({ open, onClose, categories }: Props) {
               <span className="material-symbols-outlined">{l.icon}</span>
             </NavLink>
           ))}
-          <button type="button" className="theme-drawer-btn" onClick={toggleTheme}>
-            <span>{theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'}</span>
-            <span className="material-symbols-outlined">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
-          </button>
           {user ? (
             <button
               type="button"

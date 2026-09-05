@@ -1,26 +1,18 @@
 <!doctype html>
-<html lang="ar" dir="rtl" data-theme="light">
+<html lang="ar" dir="rtl" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>دار الأنوثة | Dar Al Onoutha</title>
     <meta name="description" content="دار الأنوثة — ملابس نسائية، لانجري، أرواب وباروكات في طرابلس ليبيا" />
-    <meta name="theme-color" content="#faf8f4" />
+    <meta name="theme-color" content="#121110" />
     <script>
       (function () {
         try {
-          var saved = localStorage.getItem('dao-theme');
-          var theme =
-            saved === 'light' || saved === 'dark'
-              ? saved
-              : 'light';
-          document.documentElement.setAttribute('data-theme', theme);
-          document.documentElement.style.colorScheme = theme;
-          var meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', theme === 'light' ? '#faf8f4' : '#121110');
-        } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'light');
-        }
+          localStorage.setItem('dao-theme', 'dark');
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.style.colorScheme = 'dark';
       })();
     </script>
     <link rel="icon" type="image/png" href="/favicon-32.png?v=2" sizes="32x32" />

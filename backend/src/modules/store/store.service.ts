@@ -260,7 +260,8 @@ export class StoreService {
       const { available: onHand } = await this.inventory.getAvailability(v.id, warehouseId);
       const available = trackStock ? onHand : 99;
       const inStock = available > 0;
-      if (inStock) anyInStock = true;
+      if (!inStock) continue;
+      anyInStock = true;
       variants.push({
         id: v.id,
         sku: v.sku,
@@ -425,12 +426,14 @@ export class StoreService {
       );
     }
 
-    return Promise.all(
+    const mapped = await Promise.all(
       products.map(async (p) => ({
         ...(await this.mapProduct(p)),
         soldCount: soldByProduct.get(p.id) || 0,
       })),
     );
+    // Hide sold-out products from the public storefront (still editable in admin).
+    return mapped.filter((p) => p.inStock);
   }
 
   async variantStock(ids: string[]) {
@@ -463,6 +466,9 @@ export class StoreService {
     });
     if (!product) throw new NotFoundException('المنتج غير موجود');
     const mapped = await this.mapProduct(product);
+    if (!mapped.inStock) {
+      throw new NotFoundException('المنتج غير متوفر حالياً');
+    }
 
     const related = await this.prisma.product.findMany({
       where: {
@@ -471,12 +477,17 @@ export class StoreService {
         categoryId: product.categoryId || undefined,
       },
       include: this.productInclude(),
-      take: 8,
+      take: 16,
     });
+    const relatedMapped = (
+      await Promise.all(related.map((p) => this.mapProduct(p)))
+    )
+      .filter((p) => p.inStock)
+      .slice(0, 8);
 
     return {
       ...mapped,
-      related: await Promise.all(related.map((p) => this.mapProduct(p))),
+      related: relatedMapped,
       suggested: await this.listProducts({ collection: 'new' }).then((list) =>
         list.filter((p) => p.id !== id).slice(0, 8),
       ),

@@ -49,6 +49,7 @@ async function bootstrap() {
   const uploadsDir = join(process.cwd(), 'uploads');
   mkdirSync(join(uploadsDir, 'products'), { recursive: true });
   mkdirSync(join(uploadsDir, 'banners'), { recursive: true });
+  mkdirSync(join(uploadsDir, 'categories'), { recursive: true });
   app.useStaticAssets(uploadsDir, { prefix: '/uploads/' });
 
   app.setGlobalPrefix('api/v1', {

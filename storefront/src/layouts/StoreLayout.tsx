@@ -6,6 +6,7 @@ import { Header } from '../components/layout/Header';
 import { MobileMenu } from '../components/layout/MobileMenu';
 import { Footer } from '../components/layout/Footer';
 import { BottomNav } from '../components/layout/BottomNav';
+import { FloatingActions } from '../components/FloatingActions';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
 export function StoreLayout() {
@@ -49,6 +50,7 @@ export function StoreLayout() {
       <Outlet />
       <Footer />
       <BottomNav />
+      <FloatingActions />
     </div>
   );
 }

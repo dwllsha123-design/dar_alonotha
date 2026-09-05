@@ -1,14 +1,11 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useCart } from '../../cart/CartContext';
 import { useAuth } from '../../auth/AuthContext';
-import { ThemeToggle } from '../../theme/ThemeToggle';
 import { useFavorites } from '../../cart/CartContext';
 
 const NAV = [
   { to: '/', label: 'الرئيسية', end: true },
   { to: '/products', label: 'المتجر' },
-  { to: '/new', label: 'جديدنا' },
-  { to: '/bestseller', label: 'الأكثر مبيعًا' },
   { to: '/categories', label: 'التصنيفات' },
   { to: '/offers', label: 'العروض' },
   { to: '/about', label: 'من نحن' },
@@ -56,7 +53,6 @@ export function Header({ compact, onOpenMenu, cartPulse }: Props) {
               <span className={`material-symbols-outlined${favCount ? ' filled' : ''}`}>favorite</span>
               {favCount > 0 ? <span className="cart-badge">{favCount > 9 ? '9+' : favCount}</span> : null}
             </Link>
-            <ThemeToggle />
             <Link className={`icon-btn${cartPulse ? ' cart-pulse' : ''}`} to="/cart" aria-label="السلة">
               <span className="material-symbols-outlined">shopping_cart</span>
               {count > 0 ? <span className="cart-badge">{count > 9 ? '9+' : count}</span> : null}
