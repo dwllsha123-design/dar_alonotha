@@ -21,6 +21,8 @@ import {
 import { ReviewsPage } from './pages/ReviewsPage';
 import { captureAttributionFromUrl } from './api/client';
 import { ThemeProvider } from './theme/ThemeContext';
+import { LocaleProvider } from './i18n/LocaleContext';
+import { ToastProvider } from './components/Toast';
 import { SITE_COPY, STORE_PHONES, STORE_LOCATION } from './data/siteContent';
 
 function AttributionCapture() {
@@ -34,11 +36,13 @@ function AttributionCapture() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <CartProvider>
-          <AttributionCapture />
-          <Routes>
-            <Route element={<StoreLayout />}>
+      <LocaleProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <CartProvider>
+              <AttributionCapture />
+              <Routes>
+                <Route element={<StoreLayout />}>
             <Route index element={<HomePage />} />
             <Route path="products" element={<CatalogPage mode="all" />} />
             <Route path="categories" element={<CategoriesPage />} />
@@ -113,8 +117,10 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </CartProvider>
-    </AuthProvider>
+            </CartProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </LocaleProvider>
     </ThemeProvider>
   );
 }

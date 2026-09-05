@@ -251,6 +251,31 @@ export function HomePage() {
           <ProductGrid products={bestsellers.slice(0, 4)} />
         </section>
       ) : null}
+
+      <section className="container section">
+        <div className="trust-strip">
+          <div className="trust-item">
+            <span className="material-symbols-outlined">local_shipping</span>
+            <h3>توصيل داخل ليبيا</h3>
+            <p>نوصل طلباتك إلى مختلف المدن الليبية حسب المنطقة.</p>
+          </div>
+          <div className="trust-item">
+            <span className="material-symbols-outlined">lock</span>
+            <h3>خصوصية تامة</h3>
+            <p>نحرص على تغليف طلبك بطريقة تحافظ على خصوصيتك.</p>
+          </div>
+          <div className="trust-item">
+            <span className="material-symbols-outlined">verified</span>
+            <h3>جودة مختارة</h3>
+            <p>منتجات منتقاة بعناية لتليق بأنوثتك.</p>
+          </div>
+          <div className="trust-item">
+            <span className="material-symbols-outlined">support_agent</span>
+            <h3>دعم العملاء</h3>
+            <p>فريقنا جاهز لمساعدتكِ في أي استفسار.</p>
+          </div>
+        </div>
+      </section>
     </>
   );
 }

@@ -3,6 +3,9 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useCart } from '../cart/CartContext';
 import { useAuth } from '../auth/AuthContext';
 import { NewsletterForm } from '../components/NewsletterForm';
+import { CartDrawer } from '../components/CartDrawer';
+import { SearchOverlay } from '../components/SearchOverlay';
+import { SizeGuideModal } from '../components/SizeGuide';
 import {
   SITE_COPY,
   STORE_LOCATION,
@@ -12,6 +15,7 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { ThemeToggle } from '../theme/ThemeToggle';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { useLocale } from '../i18n/LocaleContext';
 
 const CATEGORY_ICONS: Record<string, string> = {
   lingerie: 'checkroom',
@@ -22,28 +26,20 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 function bottomActive(pathname: string, key: string) {
   if (key === 'home') return pathname === '/';
-  if (key === 'store') {
+  if (key === 'shop') {
     return (
       pathname.startsWith('/products') ||
       pathname.startsWith('/product') ||
       pathname.startsWith('/category') ||
       pathname.startsWith('/offers') ||
       pathname.startsWith('/new') ||
-      pathname.startsWith('/bestseller')
+      pathname.startsWith('/bestseller') ||
+      pathname.startsWith('/search')
     );
   }
   if (key === 'categories') return pathname.startsWith('/categories');
-  if (key === 'about') return pathname.startsWith('/about');
+  if (key === 'wishlist') return pathname.startsWith('/wishlist');
   if (key === 'cart') return pathname.startsWith('/cart') || pathname.startsWith('/checkout');
-  if (key === 'account') {
-    return (
-      pathname.startsWith('/account') ||
-      pathname.startsWith('/login') ||
-      pathname.startsWith('/register') ||
-      pathname.startsWith('/wishlist') ||
-      pathname.startsWith('/track')
-    );
-  }
   return false;
 }
 
@@ -51,32 +47,43 @@ export function StoreLayout() {
   const { count } = useCart();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t, locale, setLocale } = useLocale();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [headerHidden, setHeaderHidden] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
   const categories = useStoreCategories();
+
+  const parents = useMemo(() => categories.filter((c) => !c.parentId), [categories]);
+
   const drawerLinks = useMemo(
     () => [
-      { to: '/new', label: 'وصلنا حديثاً', icon: 'new_releases' },
-      ...categories
-        .filter((c) => !c.parentId)
-        .map((c) => ({
-          to: `/category/${c.slug}`,
-          label: c.nameAr,
-          icon: CATEGORY_ICONS[c.slug] || 'category',
-        })),
-      { to: '/offers', label: 'العروض', icon: 'sell' },
-      { to: '/bestseller', label: 'الأكثر مبيعاً', icon: 'trending_up' },
-      { to: '/wishlist', label: 'المفضلة', icon: 'favorite' },
-      { to: '/track', label: 'تتبع الطلب', icon: 'local_shipping' },
-      { to: '/contact', label: 'تواصل معنا', icon: 'contact_support' },
+      { to: '/', label: t('home'), icon: 'home' },
+      { to: '/products', label: t('shop'), icon: 'storefront' },
+      { to: '/categories', label: t('categories'), icon: 'grid_view' },
+      { to: '/new', label: t('newArrivals'), icon: 'new_releases' },
+      { to: '/bestseller', label: t('bestsellers'), icon: 'trending_up' },
+      { to: '/offers', label: t('offers'), icon: 'sell' },
+      ...parents.map((c) => ({
+        to: `/category/${c.slug}`,
+        label: c.nameAr,
+        icon: CATEGORY_ICONS[c.slug] || 'category',
+      })),
+      { to: '/wishlist', label: t('wishlist'), icon: 'favorite' },
+      { to: '/track', label: t('trackOrder'), icon: 'local_shipping' },
+      { to: '/about', label: t('about'), icon: 'info' },
+      { to: '/contact', label: t('contact'), icon: 'contact_support' },
     ],
-    [categories],
+    [parents, t],
   );
 
   useEffect(() => {
     setDrawerOpen(false);
     setHeaderHidden(false);
+    setCartOpen(false);
+    setSearchOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -89,24 +96,20 @@ export function StoreLayout() {
   useEffect(() => {
     let lastY = window.scrollY;
     const onScroll = () => {
-      if (drawerOpen) {
+      if (drawerOpen || searchOpen || cartOpen) {
         setHeaderHidden(false);
         lastY = window.scrollY;
         return;
       }
       const y = window.scrollY;
-      if (y < 16) {
-        setHeaderHidden(false);
-      } else if (y > lastY + 4) {
-        setHeaderHidden(true);
-      } else if (y < lastY - 4) {
-        setHeaderHidden(false);
-      }
+      if (y < 16) setHeaderHidden(false);
+      else if (y > lastY + 4) setHeaderHidden(true);
+      else if (y < lastY - 4) setHeaderHidden(false);
       lastY = y;
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [drawerOpen]);
+  }, [drawerOpen, searchOpen, cartOpen]);
 
   return (
     <div className="page-shell">
@@ -119,60 +122,83 @@ export function StoreLayout() {
                 {p.label}
               </a>
             ))}
-            <Link to="/track">تتبع طلبك</Link>
+            <Link to="/track">{t('trackOrder')}</Link>
+            <button
+              type="button"
+              className="lang-switch"
+              onClick={() => setLocale(locale === 'ar' ? 'en' : 'ar')}
+            >
+              {locale === 'ar' ? 'EN' : 'ع'}
+            </button>
           </div>
         </div>
       </div>
-      <header className={`site-header${headerHidden ? ' is-hidden' : ''}`}>
+
+      <header className={`site-header sticky-header${headerHidden ? ' is-hidden' : ''}`}>
         <div className="container">
           <div className="header-bar">
             <div className="header-side">
               <button
                 type="button"
                 className="icon-btn menu-toggle"
-                aria-label="القائمة"
+                aria-label={t('menu')}
                 onClick={() => setDrawerOpen(true)}
               >
                 <span className="material-symbols-outlined">menu</span>
               </button>
             </div>
 
-            <Link to="/" className="brand-center" aria-label="دار الأنوثة — Dar Al Onoutha">
+            <Link to="/" className="brand-center" aria-label={`${t('brand')} — ${t('brandEn')}`}>
               <span className="brand-mark">
-                <img className="brand-logo" src="/brand-logo.png" alt="دار الأنوثة" />
+                <img className="brand-logo" src="/brand-logo.png" alt={t('brand')} />
               </span>
             </Link>
 
             <div className="header-side header-actions">
-              <Link className="icon-btn desktop-only" to="/search-box" aria-label="بحث">
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={t('search')}
+                onClick={() => setSearchOpen(true)}
+              >
                 <span className="material-symbols-outlined">search</span>
-              </Link>
-              <Link className="icon-btn desktop-only" to={user ? '/account' : '/login'} aria-label="حسابي">
+              </button>
+              <Link className="icon-btn desktop-only" to={user ? '/account' : '/login'} aria-label={t('account')}>
                 <span className="material-symbols-outlined">person</span>
               </Link>
-              <ThemeToggle />
-              <Link className="icon-btn" to="/cart" aria-label="السلة">
-                <span className="material-symbols-outlined">shopping_cart</span>
-                {count > 0 ? <span className="cart-badge">{count > 9 ? '9+' : count}</span> : null}
+              <Link className="icon-btn desktop-only" to="/wishlist" aria-label={t('wishlist')}>
+                <span className="material-symbols-outlined">favorite</span>
               </Link>
+              <ThemeToggle />
+              <button type="button" className="icon-btn" aria-label={t('cart')} onClick={() => setCartOpen(true)}>
+                <span className="material-symbols-outlined">shopping_bag</span>
+                {count > 0 ? <span className="cart-badge">{count > 9 ? '9+' : count}</span> : null}
+              </button>
             </div>
           </div>
 
-          <nav className="desktop-nav">
+          <nav className="desktop-nav desktop-nav-rich" aria-label="القائمة الرئيسية">
             <NavLink to="/" end>
-              الرئيسية
+              {t('home')}
             </NavLink>
-            <NavLink to="/products">المتجر</NavLink>
-            <NavLink to="/categories">التصنيفات</NavLink>
-            <NavLink to="/about">من نحن</NavLink>
+            <NavLink to="/products">{t('shop')}</NavLink>
+            <NavLink to="/categories">{t('categories')}</NavLink>
+            <NavLink to="/offers">{t('offers')}</NavLink>
+            <NavLink to="/bestseller">{t('bestsellers')}</NavLink>
+            <NavLink to="/new">{t('newArrivals')}</NavLink>
+            <button type="button" className="nav-text-btn" onClick={() => setSizeOpen(true)}>
+              {t('sizeGuide')}
+            </button>
+            <NavLink to="/about">{t('about')}</NavLink>
+            <NavLink to="/contact">{t('contact')}</NavLink>
           </nav>
         </div>
       </header>
 
       <div className={`drawer-root${drawerOpen ? ' open' : ''}`} aria-hidden={!drawerOpen}>
         <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
-        <aside className="drawer-panel" role="dialog" aria-label="القائمة">
-          <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="إغلاق">
+        <aside className="drawer-panel" role="dialog" aria-label={t('menu')}>
+          <button type="button" className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label={t('close')}>
             <span className="material-symbols-outlined">close</span>
           </button>
           <div className="drawer-head">
@@ -180,16 +206,16 @@ export function StoreLayout() {
               <img src="/brand-logo.png" alt="" />
             </div>
             <h2 className="headline-md" style={{ margin: 0, color: 'var(--primary)' }}>
-              {user ? `مرحباً ${user.name}` : 'مرحباً بكِ'}
+              {user ? `مرحباً ${user.name}` : t('welcome')}
             </h2>
             <p className="body-md" style={{ margin: 0, color: 'var(--on-surface-variant)' }}>
               {user ? (
-                <Link to="/account">حسابي</Link>
+                <Link to="/account">{t('account')}</Link>
               ) : (
                 <>
-                  <Link to="/login">تسجيل الدخول</Link>
+                  <Link to="/login">{t('login')}</Link>
                   {' / '}
-                  <Link to="/register">عضوية جديدة</Link>
+                  <Link to="/register">{t('register')}</Link>
                 </>
               )}
             </p>
@@ -199,16 +225,24 @@ export function StoreLayout() {
           </div>
           <nav className="drawer-nav">
             {drawerLinks.map((l) => (
-              <NavLink key={l.to} to={l.to}>
+              <NavLink key={`${l.to}-${l.label}`} to={l.to} onClick={() => setDrawerOpen(false)}>
                 <span>{l.label}</span>
                 <span className="material-symbols-outlined">{l.icon}</span>
               </NavLink>
             ))}
+            <button
+              type="button"
+              onClick={() => {
+                setDrawerOpen(false);
+                setSizeOpen(true);
+              }}
+            >
+              <span>{t('sizeGuide')}</span>
+              <span className="material-symbols-outlined">straighten</span>
+            </button>
             <button type="button" className="theme-drawer-btn" onClick={toggleTheme}>
               <span>{theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'}</span>
-              <span className="material-symbols-outlined">
-                {theme === 'dark' ? 'light_mode' : 'dark_mode'}
-              </span>
+              <span className="material-symbols-outlined">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
             </button>
             {user ? (
               <button type="button" onClick={logout}>
@@ -225,7 +259,7 @@ export function StoreLayout() {
       <footer className="site-footer">
         <div className="container footer-grid footer-grid-ly">
           <div className="footer-brand">
-            <img className="footer-logo" src="/brand-logo.png" alt="دار الأنوثة" />
+            <img className="footer-logo" src="/brand-logo.png" alt={t('brand')} />
             <h3>حول الشركة</h3>
             <p>{SITE_COPY.footerAbout}</p>
             <p>{SITE_COPY.footerDelivery}</p>
@@ -244,27 +278,30 @@ export function StoreLayout() {
           <div className="footer-col">
             <strong>روابط سريعة</strong>
             <div className="footer-links">
-              <Link to="/">الصفحة الرئيسية</Link>
-              <Link to="/about">من نحن</Link>
-              <Link to="/products">تسوق الآن</Link>
+              <Link to="/">{t('home')}</Link>
+              <Link to="/about">{t('about')}</Link>
+              <Link to="/products">{t('shop')}</Link>
+              <Link to="/offers">{t('offers')}</Link>
               <Link to="/reviews">آراء العملاء</Link>
-              <Link to="/policies/shipping">سياسة الشحن</Link>
             </div>
           </div>
           <div className="footer-col">
             <strong>دعم العملاء</strong>
             <div className="footer-links">
-              <Link to="/track">تتبع طلبك</Link>
-              <Link to="/cart">سلة المشتريات</Link>
+              <Link to="/track">{t('trackOrder')}</Link>
+              <Link to="/cart">{t('cart')}</Link>
+              <Link to="/wishlist">{t('wishlist')}</Link>
               <Link to="/policies/returns">سياسة الاسترجاع</Link>
-              <Link to="/policies/shipping">طرق الشحن</Link>
-              <Link to="/contact">خدمة العملاء</Link>
+              <Link to="/contact">{t('contact')}</Link>
             </div>
           </div>
           <div className="footer-col">
             <strong>النشرة الإخبارية</strong>
-            <p className="footer-newsletter-hint">للحصول على آخر الأخبار وآخر التحديثات منا.</p>
+            <p className="footer-newsletter-hint">للحصول على آخر الأخبار والعروض.</p>
             <NewsletterForm />
+            <p className="label-sm muted" style={{ marginTop: 12 }}>
+              {t('privacyNote')}
+            </p>
           </div>
         </div>
         <div className="container footer-bottom">
@@ -278,35 +315,43 @@ export function StoreLayout() {
             <span className={`material-symbols-outlined${bottomActive(location.pathname, 'home') ? ' filled' : ''}`}>
               home
             </span>
-            <span>الرئيسية</span>
-          </Link>
-          <Link to="/products" className={bottomActive(location.pathname, 'store') ? 'active' : ''}>
-            <span className={`material-symbols-outlined${bottomActive(location.pathname, 'store') ? ' filled' : ''}`}>
-              storefront
-            </span>
-            <span>المتجر</span>
+            <span>{t('home')}</span>
           </Link>
           <Link to="/categories" className={bottomActive(location.pathname, 'categories') ? 'active' : ''}>
-            <span className={`material-symbols-outlined${bottomActive(location.pathname, 'categories') ? ' filled' : ''}`}>
-              checkroom
+            <span
+              className={`material-symbols-outlined${bottomActive(location.pathname, 'categories') ? ' filled' : ''}`}
+            >
+              grid_view
             </span>
-            <span>التصنيفات</span>
+            <span>{t('categories')}</span>
           </Link>
-          <Link to="/cart" className={bottomActive(location.pathname, 'cart') ? 'active' : ''}>
+          <button type="button" className={searchOpen ? 'active' : ''} onClick={() => setSearchOpen(true)}>
+            <span className="material-symbols-outlined">search</span>
+            <span>{t('search')}</span>
+          </button>
+          <Link to="/wishlist" className={bottomActive(location.pathname, 'wishlist') ? 'active' : ''}>
+            <span
+              className={`material-symbols-outlined${bottomActive(location.pathname, 'wishlist') ? ' filled' : ''}`}
+            >
+              favorite
+            </span>
+            <span>{t('wishlist')}</span>
+          </Link>
+          <button
+            type="button"
+            className={bottomActive(location.pathname, 'cart') || cartOpen ? 'active' : ''}
+            onClick={() => setCartOpen(true)}
+          >
             {count > 0 ? <span className="cart-dot" /> : null}
-            <span className={`material-symbols-outlined${bottomActive(location.pathname, 'cart') ? ' filled' : ''}`}>
-              shopping_cart
-            </span>
-            <span>السلة</span>
-          </Link>
-          <Link to={user ? '/account' : '/login'} className={bottomActive(location.pathname, 'account') ? 'active' : ''}>
-            <span className={`material-symbols-outlined${bottomActive(location.pathname, 'account') ? ' filled' : ''}`}>
-              person
-            </span>
-            <span>حسابي</span>
-          </Link>
+            <span className={`material-symbols-outlined${count > 0 ? ' filled' : ''}`}>shopping_bag</span>
+            <span>{t('cart')}</span>
+          </button>
         </div>
       </nav>
+
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+      <SizeGuideModal open={sizeOpen} onClose={() => setSizeOpen(false)} />
     </div>
   );
 }

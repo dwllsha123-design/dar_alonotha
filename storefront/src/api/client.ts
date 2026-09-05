@@ -69,8 +69,10 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   return json as T;
 }
 
-export const money = (n: number | string) =>
-  `${Number(n || 0).toLocaleString('ar-LY')} د.ل`;
+export const money = (n: number | string) => {
+  const value = Math.round(Number(n || 0));
+  return `${value.toLocaleString('ar-LY')} د.ل`;
+};
 
 export function captureAttributionFromUrl() {
   const params = new URLSearchParams(window.location.search);

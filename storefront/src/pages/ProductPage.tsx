@@ -3,6 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, money, type StoreProduct } from '../api/client';
 import { useCart, useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
+import { SizeGuideModal } from '../components/SizeGuide';
+import { useToast } from '../components/Toast';
+import { useLocale } from '../i18n/LocaleContext';
 import { storeColorHex } from '../lib/colors';
 
 const MAX_QTY = 10;
@@ -12,12 +15,15 @@ export function ProductPage() {
   const navigate = useNavigate();
   const { add } = useCart();
   const fav = useFavorites();
+  const toast = useToast();
+  const { t } = useLocale();
   const [product, setProduct] = useState<StoreProduct | null>(null);
   const [variantId, setVariantId] = useState('');
   const [qty, setQty] = useState(1);
   const [imageIdx, setImageIdx] = useState(0);
   const [error, setError] = useState('');
   const [added, setAdded] = useState(false);
+  const [sizeOpen, setSizeOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -93,10 +99,12 @@ export function ProductPage() {
     });
     if (!ok) {
       setError('غير متوفر حالياً');
+      toast.push(t('errorRetry'), 'err');
       return false;
     }
     setError('');
     setAdded(true);
+    toast.push(t('addedToCart'));
     window.setTimeout(() => setAdded(false), 2200);
     return true;
   }
@@ -212,8 +220,11 @@ export function ProductPage() {
 
           {sizes.length ? (
             <div>
-              <div className="muted" style={{ marginBottom: 8 }}>
-                المقاس
+              <div className="size-row-head">
+                <div className="muted">المقاس</div>
+                <button type="button" className="size-guide-link" onClick={() => setSizeOpen(true)}>
+                  {t('sizeGuide')}
+                </button>
               </div>
               <div className="sizes">
                 {sizes.map((s) => {
@@ -250,7 +261,11 @@ export function ProductPage() {
                 })}
               </div>
             </div>
-          ) : null}
+          ) : (
+            <button type="button" className="size-guide-link" onClick={() => setSizeOpen(true)}>
+              {t('sizeGuide')}
+            </button>
+          )}
 
           {unavailable ? (
             <div className="stock-out-banner" role="status">
@@ -318,6 +333,7 @@ export function ProductPage() {
         </div>
       ) : null}
       <Link to="/products">متابعة التسوق</Link>
+      <SizeGuideModal open={sizeOpen} onClose={() => setSizeOpen(false)} />
     </section>
   );
 }

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { money, type StoreProduct } from '../api/client';
 import { useCart, useFavorites } from '../cart/CartContext';
+import { useToast } from './Toast';
+import { useLocale } from '../i18n/LocaleContext';
 import { storeColorHex } from '../lib/colors';
 
 const SIZE_LIMIT = 4;
@@ -18,6 +20,8 @@ export function ProductCard({
 }) {
   const fav = useFavorites();
   const { add } = useCart();
+  const toast = useToast();
+  const { t } = useLocale();
   const [added, setAdded] = useState(false);
   const [previewColor, setPreviewColor] = useState<string | null>(null);
 
@@ -63,8 +67,12 @@ export function ProductCard({
       available: stockVariant.available,
       inStock: true,
     });
-    if (!ok) return;
+    if (!ok) {
+      toast.push(t('errorRetry'), 'err');
+      return;
+    }
     setAdded(true);
+    toast.push(t('addedToCart'));
     window.setTimeout(() => setAdded(false), 1600);
   }
 
