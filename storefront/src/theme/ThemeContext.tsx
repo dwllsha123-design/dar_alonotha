@@ -28,9 +28,9 @@ export function readStoredTheme(): Theme {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (isTheme(saved)) return saved;
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    return 'light';
   } catch {
-    return 'dark';
+    return 'light';
   }
 }
 
@@ -39,13 +39,13 @@ export function applyTheme(theme: Theme) {
   root.setAttribute('data-theme', theme);
   root.style.colorScheme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', theme === 'light' ? '#fdfbf7' : '#0c0c0c');
+  if (meta) meta.setAttribute('content', theme === 'light' ? '#faf8f4' : '#121110');
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() =>
     typeof document === 'undefined'
-      ? 'dark'
+      ? 'light'
       : ((document.documentElement.getAttribute('data-theme') as Theme | null) ?? readStoredTheme()),
   );
 

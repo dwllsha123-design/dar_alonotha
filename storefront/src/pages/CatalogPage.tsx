@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
-import { ProductGrid, type CatalogViewMode } from '../components/ProductCard';
+import { ProductGrid, ProductGridSkeleton } from '../components/ProductCard';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { usePageMeta } from '../hooks/usePageMeta';
+import { SITE_COPY } from '../data/siteContent';
 
 const titles: Record<string, string> = {
   lingerie: 'لانجري',
@@ -11,7 +13,7 @@ const titles: Record<string, string> = {
   wigs: 'باروكات',
   offers: 'العروض',
   new: 'المنتجات الجديدة',
-  bestseller: 'الأكثر مبيعاً',
+  bestseller: 'الأكثر مبيعًا',
   products: 'المتجر',
 };
 
@@ -22,18 +24,7 @@ const CATEGORY_ICONS: Record<string, string> = {
   wigs: 'face_3',
 };
 
-const VIEW_KEY = 'catalog_view_mode';
-
 type SortKey = 'new' | 'bestseller' | 'price' | 'price-desc';
-
-function readViewMode(): CatalogViewMode {
-  try {
-    const v = localStorage.getItem(VIEW_KEY);
-    return v === 'list' ? 'list' : 'grid';
-  } catch {
-    return 'grid';
-  }
-}
 
 export function CatalogPage({
   mode,
@@ -47,12 +38,12 @@ export function CatalogPage({
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const categories = useStoreCategories();
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [qInput, setQInput] = useState(params.get('q') || '');
   const [sort, setSort] = useState<SortKey>('new');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [onSaleOnly, setOnSaleOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<CatalogViewMode>(readViewMode);
   const q = params.get('q') || '';
 
   const collectionSlug =
@@ -81,7 +72,8 @@ export function CatalogPage({
     return categories.filter((c) => c.parentId === activeParent.id);
   }, [categories, activeParent]);
 
-  const showCategoryNav = mode === 'all' || mode === 'search' || mode === 'category' || collectionSlug === 'offers';
+  const showCategoryNav =
+    mode === 'all' || mode === 'search' || mode === 'category' || collectionSlug === 'offers';
   const offersActive = collectionSlug === 'offers';
 
   useEffect(() => {
@@ -97,13 +89,16 @@ export function CatalogPage({
     if (mode === 'search') {
       if (!q) {
         setProducts([]);
+        setLoading(false);
         return;
       }
       path += `?q=${encodeURIComponent(q)}`;
     }
+    setLoading(true);
     api<StoreProduct[]>(path)
       .then(setProducts)
-      .catch((e) => setError(e.message));
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [mode, slug, collectionSlug, q]);
 
   const filtered = useMemo(() => {
@@ -140,21 +135,14 @@ export function CatalogPage({
       ? 'اكتشفي أحدث صيحات الموضة التي تبرز أنوثتك'
       : `${filtered.length} منتج`;
 
+  usePageMeta(title);
+
   function onSearch(e: FormEvent) {
     e.preventDefault();
     if (mode === 'search') {
       setParams(qInput ? { q: qInput } : {});
     } else if (qInput.trim()) {
       navigate(`/search?q=${encodeURIComponent(qInput.trim())}`);
-    }
-  }
-
-  function setView(next: CatalogViewMode) {
-    setViewMode(next);
-    try {
-      localStorage.setItem(VIEW_KEY, next);
-    } catch {
-      /* ignore */
     }
   }
 
@@ -197,10 +185,7 @@ export function CatalogPage({
               </Link>
             );
           })}
-          <Link
-            to="/offers"
-            className={`category-icon offers${offersActive ? ' active' : ''}`}
-          >
+          <Link to="/offers" className={`category-icon offers${offersActive ? ' active' : ''}`}>
             <span className="category-icon-media">
               <span className="material-symbols-outlined">sell</span>
             </span>
@@ -235,12 +220,7 @@ export function CatalogPage({
                   <img src={c.imageUrl} alt="" loading="lazy" decoding="async" />
                 ) : (
                   <span className="material-symbols-outlined">
-                    {CATEGORY_ICONS[c.slug] ||
-                      (c.slug.includes('large') || c.nameAr.includes('كبير')
-                        ? 'straighten'
-                        : c.slug.includes('small') || c.nameAr.includes('صغير')
-                          ? 'compress'
-                          : 'category')}
+                    {CATEGORY_ICONS[c.slug] || 'category'}
                   </span>
                 )}
               </span>
@@ -256,30 +236,10 @@ export function CatalogPage({
           <input
             value={qInput}
             onChange={(e) => setQInput(e.target.value)}
-            placeholder="ابحثي عن منتج..."
+            placeholder="ابحثي عن منتج"
           />
         </form>
         <div className="sort-row hide-scroll">
-          <div className="view-toggle" role="group" aria-label="طريقة العرض">
-            <button
-              type="button"
-              className={viewMode === 'grid' ? 'active' : ''}
-              aria-pressed={viewMode === 'grid'}
-              aria-label="عرض شبكي"
-              onClick={() => setView('grid')}
-            >
-              <span className="material-symbols-outlined">grid_view</span>
-            </button>
-            <button
-              type="button"
-              className={viewMode === 'list' ? 'active' : ''}
-              aria-pressed={viewMode === 'list'}
-              aria-label="عرض قائمة"
-              onClick={() => setView('list')}
-            >
-              <span className="material-symbols-outlined">view_list</span>
-            </button>
-          </div>
           <div className="sort-pills">
             <button type="button" className={sort === 'new' ? 'active' : ''} onClick={() => setSort('new')}>
               الأحدث
@@ -289,13 +249,9 @@ export function CatalogPage({
               className={sort === 'bestseller' ? 'active' : ''}
               onClick={() => setSort('bestseller')}
             >
-              الأكثر مبيعاً
+              الأكثر مبيعًا
             </button>
-            <button
-              type="button"
-              className={sort === 'price' ? 'active' : ''}
-              onClick={() => setSort('price')}
-            >
+            <button type="button" className={sort === 'price' ? 'active' : ''} onClick={() => setSort('price')}>
               السعر ↑
             </button>
             <button
@@ -342,108 +298,81 @@ export function CatalogPage({
       ) : null}
 
       {error ? <div className="error">{error}</div> : null}
-      <ProductGrid products={filtered} viewMode={viewMode} />
+      {loading ? (
+        <ProductGridSkeleton count={8} />
+      ) : filtered.length ? (
+        <ProductGrid products={filtered} />
+      ) : (
+        <div className="empty-state">
+          <h3 className="headline-md">
+            {mode === 'search' ? 'لم نجد منتجات مطابقة لبحثك' : 'لم نجد منتجات مطابقة لاختيارك'}
+          </h3>
+          <Link className="btn secondary" to="/products">
+            {SITE_COPY.viewAll}
+          </Link>
+        </div>
+      )}
     </section>
   );
 }
 
 export function CategoriesPage() {
   const categories = useStoreCategories();
+  usePageMeta('التصنيفات');
 
-  const parents = useMemo(
-    () => categories.filter((c) => !c.parentId),
-    [categories],
-  );
-
-  const childrenOf = (parentId: string) =>
-    categories.filter((c) => c.parentId === parentId);
+  const parents = useMemo(() => categories.filter((c) => !c.parentId), [categories]);
 
   return (
     <section className="container section">
       <div className="section-head">
         <h2 className="headline-lg" style={{ margin: 0 }}>
-          الفئات والأصناف
+          التصنيفات
         </h2>
         <Link className="icon-btn" to="/search-box" aria-label="بحث">
           <span className="material-symbols-outlined">search</span>
         </Link>
       </div>
-
-      <div className="cat-hierarchy">
-        {parents.map((parent) => {
-          const kids = childrenOf(parent.id);
-          return (
-            <div key={parent.id} className="cat-group">
-              <Link to={`/category/${parent.slug}`} className="cat-group-head">
-                <span className="cat-group-media">
-                  {parent.imageUrl ? (
-                    <img src={parent.imageUrl} alt="" loading="lazy" decoding="async" />
-                  ) : (
-                    <span className="material-symbols-outlined">
-                      {CATEGORY_ICONS[parent.slug] || 'category'}
-                    </span>
-                  )}
+      <div className="cat-discover">
+        {parents.map((c) => (
+          <Link key={c.id} to={`/category/${c.slug}`} className="cat-discover-card">
+            <div className="cat-discover-media">
+              {c.imageUrl ? (
+                <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
+              ) : (
+                <span className="cat-discover-fallback" aria-hidden>
+                  <span className="material-symbols-outlined">
+                    {CATEGORY_ICONS[c.slug] || 'checkroom'}
+                  </span>
                 </span>
-                <div>
-                  <h3>{parent.nameAr}</h3>
-                  <p>{kids.length ? `${kids.length} صنف` : 'عرض المنتجات'}</p>
-                </div>
-                <span className="material-symbols-outlined cat-group-arrow">chevron_left</span>
-              </Link>
-              {kids.length ? (
-                <div className="cat-group-children">
-                  {kids.map((child) => (
-                    <Link key={child.id} to={`/category/${child.slug}`} className="cat-child-chip">
-                      {child.imageUrl ? (
-                        <img src={child.imageUrl} alt="" loading="lazy" decoding="async" />
-                      ) : null}
-                      <span>{child.nameAr}</span>
-                    </Link>
-                  ))}
-                </div>
-              ) : null}
+              )}
             </div>
-          );
-        })}
-
-        <div className="cat-group">
-          <Link to="/offers" className="cat-group-head offer">
-            <span className="cat-group-media">
-              <span className="material-symbols-outlined">sell</span>
-            </span>
-            <div>
-              <h3>العروض</h3>
-              <p>اكتشفي أحدث التخفيضات</p>
-            </div>
-            <span className="material-symbols-outlined cat-group-arrow">chevron_left</span>
+            <h3>{c.nameAr}</h3>
           </Link>
-        </div>
-
-        <div className="cat-group">
-          <Link to="/new" className="cat-group-head">
-            <span className="cat-group-media">
+        ))}
+        <Link to="/new" className="cat-discover-card">
+          <div className="cat-discover-media">
+            <span className="cat-discover-fallback">
               <span className="material-symbols-outlined">new_releases</span>
             </span>
-            <div>
-              <h3>وصل حديثاً</h3>
-              <p>أحدث الإضافات</p>
-            </div>
-            <span className="material-symbols-outlined cat-group-arrow">chevron_left</span>
-          </Link>
-        </div>
-
-        <div className="cat-group">
-          <Link to="/bestseller" className="cat-group-head">
-            <span className="cat-group-media">
+          </div>
+          <h3>وصل حديثًا</h3>
+        </Link>
+        <Link to="/offers" className="cat-discover-card offer">
+          <div className="cat-discover-media">
+            <span className="cat-discover-fallback gold">
+              <span className="material-symbols-outlined">local_offer</span>
+            </span>
+          </div>
+          <h3>العروض</h3>
+        </Link>
+        <Link to="/bestseller" className="cat-discover-card">
+          <div className="cat-discover-media">
+            <span className="cat-discover-fallback">
               <span className="material-symbols-outlined">trending_up</span>
             </span>
-            <div>
-              <h3>الأكثر مبيعاً</h3>
-              <p>اختيارات الزبونات</p>
-            </div>
-            <span className="material-symbols-outlined cat-group-arrow">chevron_left</span>
-          </Link>
-        </div>
+          </div>
+          <h3>الأكثر مبيعًا</h3>
+        </Link>
       </div>
     </section>
   );

@@ -1,20 +1,11 @@
 <!doctype html>
-<html lang="ar" dir="rtl" data-theme="dark">
+<html lang="ar" dir="rtl" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>دار الأنوثة | Dar Al Onoutha — متجر أزياء نسائية في ليبيا</title>
-    <meta
-      name="description"
-      content="دار الأنوثة — متجر ليبي للأزياء النسائية واللانجري والأرواب. تسوّقي بأناقة مع توصيل داخل ليبيا وخصوصية تامة."
-    />
-    <meta property="og:title" content="دار الأنوثة | Dar Al Onoutha" />
-    <meta
-      property="og:description"
-      content="متجر أزياء نسائية راقٍ في ليبيا — وصل حديثاً، عروض، والأكثر مبيعاً."
-    />
-    <meta property="og:locale" content="ar_LY" />
-    <meta name="theme-color" content="#0c0c0c" />
+    <title>دار الأنوثة | Dar Al Onoutha</title>
+    <meta name="description" content="دار الأنوثة — ملابس نسائية، لانجري، أرواب وباروكات في طرابلس ليبيا" />
+    <meta name="theme-color" content="#faf8f4" />
     <script>
       (function () {
         try {
@@ -22,13 +13,13 @@
           var theme =
             saved === 'light' || saved === 'dark'
               ? saved
-              : window.matchMedia('(prefers-color-scheme: light)').matches
-                ? 'light'
-                : 'dark';
+              : 'light';
           document.documentElement.setAttribute('data-theme', theme);
           document.documentElement.style.colorScheme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'light' ? '#faf8f4' : '#121110');
         } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.setAttribute('data-theme', 'light');
         }
       })();
     </script>

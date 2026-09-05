@@ -8,8 +8,15 @@ export function CartPage() {
 
   if (!items.length) {
     return (
-      <section className="container section empty">
-        السلة فارغة — <Link to="/products">ابدئي التسوق</Link>
+      <section className="container section empty-state">
+        <span className="material-symbols-outlined empty-icon" aria-hidden>
+          shopping_bag
+        </span>
+        <h2 className="headline-md">سلتك ما زالت فارغة</h2>
+        <p className="muted">اكتشفي تشكيلتنا وأضيفي ما يناسبكِ</p>
+        <Link className="btn" to="/products">
+          ابدئي التسوق
+        </Link>
       </section>
     );
   }

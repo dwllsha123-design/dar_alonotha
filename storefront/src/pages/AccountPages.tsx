@@ -210,7 +210,19 @@ export function WishlistPage() {
   return (
     <section className="container section">
       <div className="section-head"><h2>المفضلة</h2></div>
-      <ProductGrid products={products} />
+      {products.length ? (
+        <ProductGrid products={products} />
+      ) : (
+        <div className="empty-state">
+          <span className="material-symbols-outlined empty-icon" aria-hidden>
+            favorite
+          </span>
+          <h3 className="headline-md">قائمة المفضلة فارغة</h3>
+          <Link className="btn" to="/products">
+            ابدئي التسوق
+          </Link>
+        </div>
+      )}
     </section>
   );
 }
@@ -256,7 +268,7 @@ export function SearchPage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="ابحث عن فساتين، عبايات، اكسسوارات..."
+          placeholder="ابحثي عن منتج"
         />
       </form>
 

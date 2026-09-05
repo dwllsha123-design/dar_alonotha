@@ -113,7 +113,14 @@ export function CheckoutPage() {
   }, [city, area, deliveryGender, requiresGender]);
 
   if (!items.length) {
-    return <div className="container section empty">السلة فارغة</div>;
+    return (
+      <div className="container section empty-state">
+        <h2 className="headline-md">سلتك ما زالت فارغة</h2>
+        <Link className="btn" to="/products">
+          ابدئي التسوق
+        </Link>
+      </div>
+    );
   }
 
   const deliveryFee = quote?.deliveryFee ?? 0;

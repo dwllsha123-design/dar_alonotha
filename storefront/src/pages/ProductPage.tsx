@@ -3,12 +3,32 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, money, type StoreProduct } from '../api/client';
 import { useCart, useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
-import { SizeGuideModal } from '../components/SizeGuide';
-import { useToast } from '../components/Toast';
-import { useLocale } from '../i18n/LocaleContext';
+import { useToast } from '../components/ui/Toast';
+import { SITE_COPY } from '../data/siteContent';
 import { storeColorHex } from '../lib/colors';
+import { usePageMeta, useProductJsonLd } from '../hooks/usePageMeta';
 
 const MAX_QTY = 10;
+const RECENT_KEY = 'dar_store_recent';
+
+function pushRecent(product: StoreProduct) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') as string[];
+    const next = [product.id, ...prev.filter((id) => id !== product.id)].slice(0, 8);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
+function readRecentIds(exclude?: string) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') as string[];
+    return prev.filter((id) => id !== exclude).slice(0, 4);
+  } catch {
+    return [];
+  }
+}
 
 export function ProductPage() {
   const { id } = useParams();
@@ -16,18 +36,21 @@ export function ProductPage() {
   const { add } = useCart();
   const fav = useFavorites();
   const toast = useToast();
-  const { t } = useLocale();
   const [product, setProduct] = useState<StoreProduct | null>(null);
+  const [recent, setRecent] = useState<StoreProduct[]>([]);
   const [variantId, setVariantId] = useState('');
   const [qty, setQty] = useState(1);
   const [imageIdx, setImageIdx] = useState(0);
   const [error, setError] = useState('');
-  const [added, setAdded] = useState(false);
-  const [sizeOpen, setSizeOpen] = useState(false);
+  const [atcState, setAtcState] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [openAcc, setOpenAcc] = useState<string | null>('details');
+
+  usePageMeta(product?.nameAr, product?.description || undefined);
+  useProductJsonLd(product);
 
   useEffect(() => {
     if (!id) return;
-    setAdded(false);
+    setAtcState('idle');
     setError('');
     api<StoreProduct>(`/store/products/${id}`)
       .then((p) => {
@@ -35,6 +58,15 @@ export function ProductPage() {
         setVariantId(p.variants.find((v) => v.inStock)?.id || p.variants[0]?.id || '');
         setImageIdx(0);
         setQty(1);
+        pushRecent(p);
+        const recentIds = readRecentIds(p.id);
+        if (recentIds.length) {
+          api<StoreProduct[]>('/store/products')
+            .then((all) => setRecent(all.filter((x) => recentIds.includes(x.id)).slice(0, 4)))
+            .catch(() => undefined);
+        } else {
+          setRecent([]);
+        }
       })
       .catch((e) => setError(e.message));
   }, [id]);
@@ -64,7 +96,6 @@ export function ProductPage() {
 
   const images = galleryImages;
   const mainImage = images[imageIdx]?.url || images[0]?.url || '';
-
   const colors = [...new Set((product?.variants || []).map((v) => v.color).filter(Boolean))];
   const sizes = [...new Set((product?.variants || []).map((v) => v.size).filter(Boolean))];
 
@@ -85,6 +116,7 @@ export function ProductPage() {
       setError('غير متوفر حالياً');
       return false;
     }
+    setAtcState('loading');
     const ok = add({
       variantId: variant.id,
       productId: product.id,
@@ -99,30 +131,69 @@ export function ProductPage() {
     });
     if (!ok) {
       setError('غير متوفر حالياً');
-      toast.push(t('errorRetry'), 'err');
+      setAtcState('idle');
       return false;
     }
     setError('');
-    setAdded(true);
-    toast.push(t('addedToCart'));
-    window.setTimeout(() => setAdded(false), 2200);
+    setAtcState('success');
+    toast.push('تمت إضافة المنتج إلى السلة');
+    window.setTimeout(() => setAtcState('idle'), 1100);
     return true;
   }
 
   if (error && !product) return <div className="container section error">{error}</div>;
-  if (!product) return <div className="container section">جارٍ التحميل...</div>;
+  if (!product) return <div className="container section muted">جارٍ التحميل...</div>;
 
   const unavailable = !variant?.inStock;
   const maxQty = Math.max(1, Math.min(MAX_QTY, variant?.available || MAX_QTY));
+  const isFav = fav.has(product.id);
+
+  const actions = (
+    <div className="pdp-actions">
+      {unavailable ? null : (
+        <>
+          <button
+            className={`btn${atcState === 'loading' ? ' is-loading' : ''}${atcState === 'success' ? ' is-success' : ''}`}
+            type="button"
+            onClick={() => addToCart()}
+            disabled={atcState === 'loading'}
+          >
+            {atcState === 'loading' ? 'جارٍ الإضافة...' : atcState === 'success' ? 'تمت الإضافة ✓' : 'أضيفي إلى السلة'}
+          </button>
+          <button
+            className="btn secondary"
+            type="button"
+            onClick={() => {
+              if (addToCart()) navigate('/checkout');
+            }}
+          >
+            اشتري الآن
+          </button>
+        </>
+      )}
+      <button
+        className={`btn ghost fav-anim${isFav ? ' on' : ''}`}
+        type="button"
+        onClick={() => {
+          fav.toggle(product.id);
+          toast.push(isFav ? 'تمت إزالة المنتج من المفضلة' : 'تمت الإضافة إلى المفضلة');
+        }}
+      >
+        <span className={`material-symbols-outlined${isFav ? ' filled' : ''}`}>favorite</span>
+        {isFav ? 'في المفضلة' : 'المفضلة'}
+      </button>
+    </div>
+  );
 
   return (
-    <section className="container section">
+    <section className="container section pdp">
       <div className="product-layout">
         <div className="gallery">
           <div className={`gallery-main${unavailable ? ' is-unavailable' : ''}`}>
             {mainImage ? (
               <img
                 key={mainImage}
+                className="gallery-main-img"
                 src={mainImage}
                 alt={product.nameAr}
                 width={1200}
@@ -143,7 +214,7 @@ export function ProductPage() {
             ) : null}
           </div>
           {images.length > 1 ? (
-            <div className="gallery-thumbs">
+            <div className="gallery-thumbs gallery-thumbs-scroll">
               {images.map((img, idx) => (
                 <button
                   key={`${img.url}-${idx}`}
@@ -158,9 +229,10 @@ export function ProductPage() {
             </div>
           ) : null}
         </div>
-        <div className="panel stack" style={{ display: 'grid', gap: 14 }}>
+
+        <div className="pdp-info panel stack">
           <div className="brand-en">Dar Al Onoutha</div>
-          <h1 style={{ margin: 0, fontFamily: 'var(--display)', fontSize: 40 }}>{product.nameAr}</h1>
+          <h1 className="pdp-title">{product.nameAr}</h1>
           <div className="price-row">
             <span className="price" style={{ fontSize: 24 }}>
               {money(variant?.retailPrice ?? product.retailPrice)}
@@ -173,7 +245,7 @@ export function ProductPage() {
             ) : null}
           </div>
           {product.sku ? <div className="muted">SKU: {product.sku}</div> : null}
-          <p style={{ lineHeight: 1.8 }}>{product.description || 'تفاصيل المنتج متوفرة عند الطلب.'}</p>
+          <p className="pdp-desc">{product.description || 'تفاصيل المنتج متوفرة عند الطلب.'}</p>
 
           {colors.length ? (
             <div>
@@ -187,14 +259,12 @@ export function ProductPage() {
                     <button
                       key={String(c)}
                       type="button"
+                      disabled={!ok}
                       className={`chip ${variant?.color === c ? 'active' : ''}${!ok ? ' unavailable' : ''}`}
                       onClick={() => {
                         const match =
                           product.variants.find(
-                            (v) =>
-                              v.color === c &&
-                              v.inStock &&
-                              (!variant?.size || v.size === variant.size),
+                            (v) => v.color === c && v.inStock && (!variant?.size || v.size === variant.size),
                           ) ||
                           product.variants.find((v) => v.color === c && v.inStock) ||
                           product.variants.find((v) => v.color === c);
@@ -202,7 +272,7 @@ export function ProductPage() {
                           setVariantId(match.id);
                           setQty(1);
                           setError('');
-                          setAdded(false);
+                          setAtcState('idle');
                         }
                       }}
                     >
@@ -220,11 +290,8 @@ export function ProductPage() {
 
           {sizes.length ? (
             <div>
-              <div className="size-row-head">
-                <div className="muted">المقاس</div>
-                <button type="button" className="size-guide-link" onClick={() => setSizeOpen(true)}>
-                  {t('sizeGuide')}
-                </button>
+              <div className="muted" style={{ marginBottom: 8 }}>
+                المقاس
               </div>
               <div className="sizes">
                 {sizes.map((s) => {
@@ -233,14 +300,12 @@ export function ProductPage() {
                     <button
                       key={String(s)}
                       type="button"
+                      disabled={!ok}
                       className={`chip ${variant?.size === s ? 'active' : ''}${!ok ? ' unavailable' : ''}`}
                       onClick={() => {
                         const match =
                           product.variants.find(
-                            (v) =>
-                              v.size === s &&
-                              v.inStock &&
-                              (!variant?.color || v.color === variant.color),
+                            (v) => v.size === s && v.inStock && (!variant?.color || v.color === variant.color),
                           ) ||
                           product.variants.find(
                             (v) => v.size === s && (!variant?.color || v.color === variant.color),
@@ -250,7 +315,7 @@ export function ProductPage() {
                           setVariantId(match.id);
                           setQty(1);
                           setError('');
-                          setAdded(false);
+                          setAtcState('idle');
                         }
                       }}
                     >
@@ -261,16 +326,12 @@ export function ProductPage() {
                 })}
               </div>
             </div>
-          ) : (
-            <button type="button" className="size-guide-link" onClick={() => setSizeOpen(true)}>
-              {t('sizeGuide')}
-            </button>
-          )}
+          ) : null}
 
           {unavailable ? (
             <div className="stock-out-banner" role="status">
               غير متوفر
-              <span>لا يمكن الشراء أو الإضافة إلى السلة حتى يتوفر المخزون</span>
+              <span>لا يمكن الشراء حتى يتوفر المخزون</span>
             </div>
           ) : (
             <div>
@@ -290,50 +351,54 @@ export function ProductPage() {
           )}
 
           {error ? <div className="error">{error}</div> : null}
-          {added ? <div className="success">تمت الإضافة إلى السلة</div> : null}
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {unavailable ? null : (
-              <>
-                <button className="btn" type="button" onClick={addToCart}>
-                  إضافة إلى السلة
-                </button>
-                <button
-                  className="btn secondary"
-                  type="button"
-                  onClick={() => {
-                    if (addToCart()) navigate('/checkout');
-                  }}
-                >
-                  شراء الآن
-                </button>
-              </>
-            )}
-            <button className="btn ghost" type="button" onClick={() => fav.toggle(product.id)}>
-              {fav.has(product.id) ? 'في المفضلة' : 'المفضلة'}
-            </button>
-          </div>
+          <div className="pdp-actions-desktop">{actions}</div>
         </div>
       </div>
 
-      {product.related?.length ? (
+      <div className="pdp-accordion">
+        {[
+          { id: 'details', title: 'التفاصيل', body: product.description || 'تفاصيل المنتج متوفرة عند الطلب.' },
+          { id: 'shipping', title: 'الشحن', body: SITE_COPY.shipping.join(' ') },
+          { id: 'returns', title: 'الاستبدال', body: SITE_COPY.returns.join(' ') },
+        ].map((item) => (
+          <div key={item.id} className={`acc-item${openAcc === item.id ? ' open' : ''}`}>
+            <button
+              type="button"
+              className="acc-trigger"
+              onClick={() => setOpenAcc((cur) => (cur === item.id ? null : item.id))}
+              aria-expanded={openAcc === item.id}
+            >
+              {item.title}
+              <span className="material-symbols-outlined">{openAcc === item.id ? 'expand_less' : 'expand_more'}</span>
+            </button>
+            {openAcc === item.id ? <div className="acc-panel">{item.body}</div> : null}
+          </div>
+        ))}
+      </div>
+
+      {product.suggested?.length || product.related?.length ? (
         <div className="section" style={{ marginTop: 40 }}>
           <div className="section-head">
-            <h2>منتجات مشابهة</h2>
+            <h2 className="headline-lg">قد يعجبكِ أيضًا</h2>
           </div>
-          <ProductGrid products={product.related} />
+          <ProductGrid products={(product.suggested?.length ? product.suggested : product.related) || []} />
         </div>
       ) : null}
-      {product.suggested?.length ? (
+
+      {recent.length ? (
         <div className="section">
           <div className="section-head">
-            <h2>قد تعجبكِ أيضاً</h2>
+            <h2 className="headline-lg">شاهدتِ مؤخرًا</h2>
           </div>
-          <ProductGrid products={product.suggested} />
+          <ProductGrid products={recent} />
         </div>
       ) : null}
-      <Link to="/products">متابعة التسوق</Link>
-      <SizeGuideModal open={sizeOpen} onClose={() => setSizeOpen(false)} />
+
+      <Link className="section-link" to="/products">
+        متابعة التسوق
+      </Link>
+
+      {!unavailable ? <div className="pdp-sticky-cta">{actions}</div> : null}
     </section>
   );
 }

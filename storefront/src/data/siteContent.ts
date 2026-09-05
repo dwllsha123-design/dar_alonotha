@@ -10,18 +10,37 @@ export const STORE_WHATSAPP_LINK = 'https://wa.me/218924443839';
 export const STORE_LOCATION = 'طرابلس — ليبيا';
 export const STORE_EMAIL = 'info@daralonotha.com';
 
+export const ANNOUNCEMENTS = [
+  'توصيل إلى مختلف المدن الليبية',
+  'سهولة الاستبدال حسب سياسة المتجر',
+  'خدمة عملاء ومتابعة للطلبات',
+] as const;
+
+export const TRUST_ITEMS = [
+  { icon: 'local_shipping', label: 'توصيل داخل ليبيا' },
+  { icon: 'sync', label: 'استبدال حسب سياسة المتجر' },
+  { icon: 'support_agent', label: 'دعم ومتابعة للطلبات' },
+  { icon: 'lock', label: 'تسوق آمن' },
+] as const;
+
 /** Copy and structure aligned with https://www.daralonotha.ly (excluding logo, location, phones) */
 export const SITE_COPY = {
   welcome: 'مرحبًا بكم في دار الأنوثة',
-  heroCta: 'شاهد تشكيلتنا',
-  newArrivals: 'وصل حديثاً',
+  heroBrand: 'دار الأنوثة',
+  heroTitle: 'تفاصيل اختيرت لكِ',
+  heroCta: 'تسوقي المجموعة الجديدة',
+  heroCtaSecondary: 'استكشفي المتجر',
+  shopByCategory: 'تسوقي حسب التصنيف',
+  newArrivals: 'وصل حديثًا',
   newArrivalsEmpty: 'انتظروا مجموعتنا الجديدة',
   comingSoon: 'قريباً',
+  bestsellers: 'الأكثر مبيعًا',
+  offers: 'العروض',
+  viewAll: 'عرض الكل',
   storyKicker: 'لماذا دار الأنوثة؟',
-  storyTitle: 'نعيد تعريف الفخامة البسيطة',
-  storyBody:
-    'نهتم بأدق التفاصيل من اختيار الأقمشة الفاخرة إلى الخياطة المتقنة، لنضمن لكِ إطلالة تجمع بين الراحة والجاذبية في كل الأوقات.',
-  storyCta: 'اكتشفي قصتنا',
+  storyTitle: 'إطلالة جديدة',
+  storyBody: 'لمسات صنعت لتكمل أناقتك — نهتم بأدق التفاصيل من اختيار الأقمشة إلى الخياطة المتقنة.',
+  storyCta: 'اكتشفي المجموعة',
   footerAbout:
     'شركة متخصصة في عالم الأناقة والجمال النسائي، تقدم منتجات مختارة بعناية تجمع بين الفخامة الجودة والذوق العصري لتمنح المرأة تجربة استثنائية تليق بأنوثتها.',
   footerDelivery: 'التوصيل متوفر لجميع مناطق ليبيا.',

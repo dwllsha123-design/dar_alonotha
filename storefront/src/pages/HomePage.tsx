@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
-import { ProductGrid } from '../components/ProductCard';
-import { HERO_SLIDES } from '../data/homeImages';
+import { ProductGrid, ProductGridSkeleton } from '../components/ProductCard';
+import { StoreLink } from '../components/StoreLink';
+import { TrustBar } from '../components/TrustBar';
+import { Reveal } from '../components/ui/Reveal';
+import { HERO_SLIDES, HOME_IMAGES } from '../data/homeImages';
 import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
-import { useLocale } from '../i18n/LocaleContext';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 type Banner = {
   id: string;
@@ -20,28 +23,18 @@ type Banner = {
   imagePosY?: number;
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  lingerie: 'checkroom',
-  underwear: 'apparel',
-  robes: 'styler',
-  wigs: 'face_3',
-};
-
 export function HomePage() {
-  const { t } = useLocale();
+  usePageMeta();
   const [newItems, setNewItems] = useState<StoreProduct[]>([]);
   const [bestsellers, setBestsellers] = useState<StoreProduct[]>([]);
   const [offers, setOffers] = useState<StoreProduct[]>([]);
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [loading, setLoading] = useState(true);
   const [heroIndex, setHeroIndex] = useState(0);
   const categories = useStoreCategories();
 
-  const parentCategories = useMemo(
-    () => categories.filter((c) => !c.parentId),
-    [categories],
-  );
-
   const heroBanners = banners.filter((b) => b.placement === 'HERO' && b.imageUrl);
+  const promoBanners = banners.filter((b) => b.placement !== 'HERO');
   const heroSlides =
     heroBanners.length > 0
       ? heroBanners.map((b) => ({
@@ -52,7 +45,9 @@ export function HomePage() {
           zoom: b.imageZoom ?? 100,
           x: b.imagePosX ?? 50,
           y: b.imagePosY ?? 50,
-          href: b.linkUrl || '/products',
+          title: b.title,
+          subtitle: b.subtitle,
+          link: b.linkUrl || '/new',
         }))
       : HERO_SLIDES.map((src) => ({
           id: src,
@@ -62,16 +57,29 @@ export function HomePage() {
           zoom: 100,
           x: 50,
           y: 50,
-          href: '/products',
+          title: SITE_COPY.heroTitle,
+          subtitle: null as string | null,
+          link: '/new',
         }));
 
   useEffect(() => {
-    api<StoreProduct[]>('/store/products?collection=new').then(setNewItems).catch(() => undefined);
-    api<StoreProduct[]>('/store/products?collection=bestseller')
-      .then(setBestsellers)
-      .catch(() => undefined);
-    api<StoreProduct[]>('/store/products?collection=offers').then(setOffers).catch(() => undefined);
-    api<Banner[]>('/store/banners').then(setBanners).catch(() => undefined);
+    let alive = true;
+    Promise.all([
+      api<StoreProduct[]>('/store/products?collection=new').catch(() => [] as StoreProduct[]),
+      api<StoreProduct[]>('/store/products?collection=bestseller').catch(() => [] as StoreProduct[]),
+      api<StoreProduct[]>('/store/products?collection=offers').catch(() => [] as StoreProduct[]),
+      api<Banner[]>('/store/banners').catch(() => [] as Banner[]),
+    ]).then(([n, b, o, bannersList]) => {
+      if (!alive) return;
+      setNewItems(n);
+      setBestsellers(b);
+      setOffers(o);
+      setBanners(bannersList);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -86,134 +94,171 @@ export function HomePage() {
     return () => window.clearInterval(timer);
   }, [heroSlides.length]);
 
+  const featured = categories.filter((c) => !c.parentId).slice(0, 6);
+  const activeHero = heroSlides[heroIndex];
+
   return (
-    <div className="shop-home pb-home">
-      <section className="shop-hero pb-banner" aria-label="عرض ترويجي">
-        <div className="shop-hero-media">
+    <>
+      <section className="hero-editorial">
+        <div className="hero-editorial-media">
           {heroSlides.map((slide, i) => (
-            <Link
+            <img
               key={slide.id}
-              to={slide.href}
-              className={`shop-hero-slide${i === heroIndex ? ' is-active' : ''}`}
-              tabIndex={i === heroIndex ? 0 : -1}
-              aria-hidden={i !== heroIndex}
-            >
-              <img
-                src={slide.src}
-                alt={slide.alt || t('brand')}
-                decoding="async"
-                loading={i === 0 ? 'eager' : 'lazy'}
-                style={{
-                  objectFit: slide.fit,
-                  objectPosition: `${slide.x}% ${slide.y}%`,
-                  transform: `scale(${slide.zoom / 100})`,
-                  transformOrigin: `${slide.x}% ${slide.y}%`,
-                }}
-              />
-            </Link>
+              className={`hero-ly-slide${i === heroIndex ? ' is-active' : ''}`}
+              src={slide.src}
+              alt={slide.alt}
+              decoding="async"
+              loading={i === 0 ? 'eager' : 'lazy'}
+              style={{
+                objectFit: slide.fit,
+                objectPosition: `${slide.x}% ${slide.y}%`,
+                transform: `scale(${slide.zoom / 100})`,
+                transformOrigin: `${slide.x}% ${slide.y}%`,
+              }}
+            />
           ))}
+          <div className="hero-ly-overlay" />
         </div>
-        {heroSlides.length > 1 ? (
-          <div className="shop-hero-dots" aria-hidden>
-            {heroSlides.map((slide, i) => (
-              <button
-                key={slide.id}
-                type="button"
-                className={i === heroIndex ? 'is-active' : ''}
-                onClick={() => setHeroIndex(i)}
-                aria-label={`شريحة ${i + 1}`}
-              />
+        <div className="container hero-editorial-copy">
+          <p className="hero-brand-label">{SITE_COPY.heroBrand}</p>
+          <h1 className="headline-xl hero-title">{activeHero?.title || SITE_COPY.heroTitle}</h1>
+          {activeHero?.subtitle ? <p className="body-lg hero-sub">{activeHero.subtitle}</p> : null}
+          <div className="hero-cta-row">
+            <Link className="btn" to={activeHero?.link || '/new'}>
+              {SITE_COPY.heroCta}
+            </Link>
+            <Link className="btn secondary" to="/products">
+              {SITE_COPY.heroCtaSecondary}
+            </Link>
+          </div>
+          {heroSlides.length > 1 ? (
+            <div className="hero-dots" aria-hidden>
+              {heroSlides.map((slide, i) => (
+                <button
+                  key={slide.id}
+                  type="button"
+                  className={i === heroIndex ? 'is-active' : ''}
+                  onClick={() => setHeroIndex(i)}
+                  aria-label={`شريحة ${i + 1}`}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {featured.length ? (
+        <Reveal className="container section">
+          <h2 className="headline-lg section-title">{SITE_COPY.shopByCategory}</h2>
+          <div className="cat-discover">
+            {featured.map((c) => (
+              <Link key={c.id} to={`/category/${c.slug}`} className="cat-discover-card">
+                <div className="cat-discover-media">
+                  {c.imageUrl ? (
+                    <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
+                  ) : (
+                    <span className="cat-discover-fallback" aria-hidden>
+                      <span className="material-symbols-outlined">checkroom</span>
+                    </span>
+                  )}
+                </div>
+                <h3>{c.nameAr}</h3>
+              </Link>
             ))}
           </div>
-        ) : null}
-      </section>
+        </Reveal>
+      ) : null}
 
-      <section className="container shop-section pb-section">
-        <div className="shop-section-head pb-section-head">
-          <p className="shop-kicker">تسوقي حسب التصنيف</p>
-          <h2>{t('categories')}</h2>
-        </div>
-        <div className="category-mosaic pb-cat-grid">
-          {parentCategories.map((c) => (
-            <Link key={c.id} to={`/category/${c.slug}`} className="category-tile pb-cat-tile">
-              <span className="category-tile-media">
-                {c.imageUrl ? (
-                  <img src={c.imageUrl} alt="" loading="lazy" decoding="async" />
-                ) : (
-                  <span className="material-symbols-outlined">
-                    {CATEGORY_ICONS[c.slug] || 'category'}
-                  </span>
-                )}
-              </span>
-              <span className="category-tile-label">{c.nameAr}</span>
-            </Link>
-          ))}
-          <Link to="/offers" className="category-tile offer pb-cat-tile">
-            <span className="category-tile-media">
-              <span className="material-symbols-outlined">sell</span>
-            </span>
-            <span className="category-tile-label">{t('offers')}</span>
-          </Link>
-          <Link to="/new" className="category-tile pb-cat-tile">
-            <span className="category-tile-media">
-              <span className="material-symbols-outlined">new_releases</span>
-            </span>
-            <span className="category-tile-label">{t('newArrivals')}</span>
-          </Link>
-          <Link to="/bestseller" className="category-tile pb-cat-tile">
-            <span className="category-tile-media">
-              <span className="material-symbols-outlined">trending_up</span>
-            </span>
-            <span className="category-tile-label">{t('bestsellers')}</span>
+      <Reveal className="container section">
+        <div className="section-head">
+          <h2 className="headline-lg">{SITE_COPY.newArrivals}</h2>
+          <Link className="section-link" to="/new">
+            {SITE_COPY.viewAll}
           </Link>
         </div>
-      </section>
-
-      <section className="container shop-section pb-section">
-        <div className="shop-section-head pb-section-head">
-          <p className="shop-kicker">شاهدي مجموعتنا الجديدة</p>
-          <h2>{SITE_COPY.newArrivals}</h2>
-          <Link to="/new" className="shop-section-link">
-            {t('viewAll')}
-          </Link>
-        </div>
-        {newItems.length ? (
+        {loading ? (
+          <ProductGridSkeleton count={4} />
+        ) : newItems.length ? (
           <ProductGrid products={newItems.slice(0, 8)} />
         ) : (
-          <div className="shop-empty">
-            <p>{SITE_COPY.newArrivalsEmpty}</p>
-            <Link className="btn soft" to="/products">
-              {t('shop')}
-            </Link>
+          <div className="coming-soon-banner panel">
+            <img src={HOME_IMAGES.comingSoon} alt="" loading="lazy" decoding="async" />
+            <div>
+              <span className="chip-new">{SITE_COPY.comingSoon}</span>
+              <p className="body-lg" style={{ margin: '8px 0 0' }}>
+                {SITE_COPY.newArrivalsEmpty}
+              </p>
+              <Link className="btn secondary" to="/products" style={{ marginTop: 16 }}>
+                تصفّحي المتجر
+              </Link>
+            </div>
           </div>
         )}
-      </section>
+      </Reveal>
 
-      {bestsellers.length ? (
-        <section className="container shop-section pb-section">
-          <div className="shop-section-head pb-section-head">
-            <p className="shop-kicker">شاهدي مجموعتنا</p>
-            <h2>{t('bestsellers')}</h2>
-            <Link to="/bestseller" className="shop-section-link">
-              {t('viewAll')}
+      <Reveal className="story-lux">
+        <div className="container story-lux-grid">
+          <div className="story-lux-photo">
+            <img src={HOME_IMAGES.comingSoon} alt="أزياء دار الأنوثة" />
+          </div>
+          <div className="story-lux-copy">
+            <span className="kicker">{SITE_COPY.storyKicker}</span>
+            <h2 className="headline-lg">{SITE_COPY.storyTitle}</h2>
+            <p className="body-lg">{SITE_COPY.storyBody}</p>
+            <Link className="btn secondary" to="/products">
+              {SITE_COPY.storyCta}
+            </Link>
+          </div>
+        </div>
+      </Reveal>
+
+      {promoBanners.length ? (
+        <Reveal className="container section">
+          <div className="banner-row">
+            {promoBanners.map((b) => (
+              <StoreLink key={b.id} className="banner-card" to={b.linkUrl || '/offers'}>
+                {b.imageUrl ? (
+                  <img src={b.imageUrl} alt="" loading="lazy" decoding="async" />
+                ) : (
+                  <div className="banner-fallback" />
+                )}
+                <div className="label">
+                  <h3 className="headline-md" style={{ margin: 0 }}>
+                    {b.title}
+                  </h3>
+                  {b.subtitle ? <p className="body-md">{b.subtitle}</p> : null}
+                </div>
+              </StoreLink>
+            ))}
+          </div>
+        </Reveal>
+      ) : null}
+
+      {!loading && bestsellers.length ? (
+        <Reveal className="container section">
+          <div className="section-head">
+            <h2 className="headline-lg">{SITE_COPY.bestsellers}</h2>
+            <Link className="section-link" to="/bestseller">
+              {SITE_COPY.viewAll}
             </Link>
           </div>
           <ProductGrid products={bestsellers.slice(0, 8)} />
-        </section>
+        </Reveal>
       ) : null}
 
-      {offers.length ? (
-        <section className="container shop-section pb-section">
-          <div className="shop-section-head pb-section-head">
-            <p className="shop-kicker">خصومات دار الأنوثة</p>
-            <h2>{t('offers')}</h2>
-            <Link to="/offers" className="shop-section-link">
-              {t('viewAll')}
+      {!loading && offers.length ? (
+        <Reveal className="container section">
+          <div className="section-head">
+            <h2 className="headline-lg">{SITE_COPY.offers}</h2>
+            <Link className="section-link" to="/offers">
+              {SITE_COPY.viewAll}
             </Link>
           </div>
           <ProductGrid products={offers.slice(0, 8)} />
-        </section>
+        </Reveal>
       ) : null}
-    </div>
+
+      <TrustBar />
+    </>
   );
 }
