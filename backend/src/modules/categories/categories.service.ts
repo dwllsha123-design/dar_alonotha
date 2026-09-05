@@ -86,12 +86,15 @@ export class CategoriesService {
 
     const parentId = await this.ensureParent(dto.parentId);
     let slugBase = dto.slug?.trim() || dto.nameEn?.trim() || nameAr;
+    // Child slugs are scoped to the parent so the same name
+    // (e.g. مقاس كبير) can exist under every category.
     if (parentId && !dto.slug?.trim()) {
       const parent = await this.prisma.category.findUnique({
         where: { id: parentId },
         select: { slug: true },
       });
-      if (parent?.slug) slugBase = `${parent.slug}-${slugBase}`;
+      const parentKey = parent?.slug || parentId.slice(-8);
+      slugBase = `${parentKey}-${slugBase}`;
     }
     const slug = await this.allocateUniqueSlug(slugBase);
 

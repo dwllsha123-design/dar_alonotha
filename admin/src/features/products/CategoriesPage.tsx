@@ -25,6 +25,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
   const [catTab, setCatTab] = useState<CatTab>('parents');
   const [nameAr, setNameAr] = useState('');
   const [parentId, setParentId] = useState('');
+  const [addToAllParents, setAddToAllParents] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, { nameAr: string; isActive: boolean }>>({});
 
   async function load() {
@@ -79,24 +80,53 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
       setError(catTab === 'parents' ? 'اكتبي اسم الفئة' : 'اكتبي اسم الصنف');
       return;
     }
-    if (catTab === 'children' && !parentId) {
-      setError('اختاري الفئة التي ينتمي إليها هذا الصنف');
+    if (catTab === 'children' && !addToAllParents && !parentId) {
+      setError('اختاري الفئة، أو فعّلي «أضف لكل الفئات»');
+      return;
+    }
+    if (catTab === 'children' && addToAllParents && !parents.length) {
+      setError('أضيفي فئة رئيسية أولاً');
       return;
     }
     setError('');
     setMsg('');
     setBusy(true);
     try {
-      await api('/categories', {
-        method: 'POST',
-        body: JSON.stringify({
-          nameAr: name,
-          parentId: catTab === 'children' ? parentId : null,
-        }),
-      });
-      setNameAr('');
-      setParentId('');
-      setMsg(catTab === 'parents' ? 'تم إضافة الفئة' : 'تم إضافة الصنف');
+      if (catTab === 'children' && addToAllParents) {
+        const targets = parents.filter(
+          (p) => !rows.some((c) => c.parentId === p.id && c.nameAr.trim() === name),
+        );
+        const skipped = parents.length - targets.length;
+        for (const p of targets) {
+          await api('/categories', {
+            method: 'POST',
+            body: JSON.stringify({ nameAr: name, parentId: p.id }),
+          });
+        }
+        setNameAr('');
+        setParentId('');
+        setAddToAllParents(false);
+        if (!targets.length) {
+          setMsg(`«${name}» موجود مسبقاً تحت كل الفئات`);
+        } else {
+          setMsg(
+            skipped > 0
+              ? `تم إضافة «${name}» إلى ${targets.length} فئة (وتخطي ${skipped} كانت موجودة)`
+              : `تم إضافة «${name}» إلى كل الفئات (${targets.length})`,
+          );
+        }
+      } else {
+        await api('/categories', {
+          method: 'POST',
+          body: JSON.stringify({
+            nameAr: name,
+            parentId: catTab === 'children' ? parentId : null,
+          }),
+        });
+        setNameAr('');
+        setParentId('');
+        setMsg(catTab === 'parents' ? 'تم إضافة الفئة' : 'تم إضافة الصنف');
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل الحفظ');
@@ -204,7 +234,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
       {embedded ? null : (
         <div className="page-title">
           <h1>الفئات والأصناف</h1>
-          <p>أضيفي فئة رئيسية ثم أصنافاً تابعة لها بحرّية (الأسماء يمكن أن تتكرر). ارفعي صورة لكل فئة لتظهر في المتجر.</p>
+          <p>أضيفي فئة رئيسية ثم أصنافاً مثل «مقاس كبير» تحت أي فئة أو لكل الفئات دفعة واحدة. الاسم يمكن أن يتكرر — الرابط يُنشأ تلقائياً لكل فئة.</p>
         </div>
       )}
 
@@ -213,7 +243,10 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
           type="button"
           role="tab"
           className={catTab === 'parents' ? 'active' : ''}
-          onClick={() => setCatTab('parents')}
+          onClick={() => {
+            setCatTab('parents');
+            setAddToAllParents(false);
+          }}
         >
           الفئات ({parents.length})
         </button>
@@ -234,7 +267,15 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
         {catTab === 'children' ? (
           <label>
             تابع لفئة
-            <select value={parentId} onChange={(e) => setParentId(e.target.value)} required>
+            <select
+              value={addToAllParents ? '' : parentId}
+              onChange={(e) => {
+                setAddToAllParents(false);
+                setParentId(e.target.value);
+              }}
+              required={!addToAllParents}
+              disabled={addToAllParents}
+            >
               <option value="">— اختاري الفئة —</option>
               {parents.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -249,14 +290,31 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
           <input
             value={nameAr}
             onChange={(e) => setNameAr(e.target.value)}
-            placeholder={catTab === 'parents' ? 'مثال: لانجري' : 'مثال: لانجري قطن'}
+            placeholder={catTab === 'parents' ? 'مثال: لانجري' : 'مثال: مقاس كبير'}
             required
             autoComplete="off"
           />
         </label>
+        {catTab === 'children' ? (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={addToAllParents}
+              onChange={(e) => {
+                setAddToAllParents(e.target.checked);
+                if (e.target.checked) setParentId('');
+              }}
+            />
+            <span>أضف لكل الفئات (مثل مقاس كبير تحت كل فئة)</span>
+          </label>
+        ) : null}
         <div style={{ display: 'flex', alignItems: 'end' }}>
           <button className="btn" type="submit" disabled={busy || !nameAr.trim()}>
-            {busy ? 'جارٍ الحفظ...' : 'إضافة'}
+            {busy
+              ? 'جارٍ الحفظ...'
+              : catTab === 'children' && addToAllParents
+                ? 'إضافة لكل الفئات'
+                : 'إضافة'}
           </button>
         </div>
       </form>
