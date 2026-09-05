@@ -204,7 +204,7 @@ export function CategoriesPage({ embedded = false }: { embedded?: boolean }) {
       {embedded ? null : (
         <div className="page-title">
           <h1>الفئات والأصناف</h1>
-          <p>أضيفي فئة رئيسية ثم أصنافاً تابعة لها. ارفعي صورة لكل فئة لتظهر في المتجر.</p>
+          <p>أضيفي فئة رئيسية ثم أصنافاً تابعة لها بحرّية (الأسماء يمكن أن تتكرر). ارفعي صورة لكل فئة لتظهر في المتجر.</p>
         </div>
       )}
 

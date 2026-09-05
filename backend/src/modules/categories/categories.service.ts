@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -53,11 +52,17 @@ export class CategoriesService {
     return row;
   }
 
-  private async ensureUniqueSlug(slug: string, excludeId?: string) {
-    const existing = await this.prisma.category.findUnique({ where: { slug } });
-    if (existing && existing.id !== excludeId) {
-      throw new ConflictException('رابط التصنيف (slug) مستخدم مسبقاً');
+  /** Always returns a free slug — never blocks the admin on duplicates. */
+  private async allocateUniqueSlug(base: string, excludeId?: string) {
+    const root = slugify(base);
+    for (let i = 0; i < 50; i++) {
+      const candidate = i === 0 ? root : `${root}-${i + 1}`;
+      const existing = await this.prisma.category.findUnique({
+        where: { slug: candidate },
+      });
+      if (!existing || existing.id === excludeId) return candidate;
     }
+    return `${root}-${Date.now().toString(36)}`;
   }
 
   private async ensureParent(parentId?: string | null, selfId?: string) {
@@ -79,9 +84,16 @@ export class CategoriesService {
     const nameAr = dto.nameAr.trim();
     if (!nameAr) throw new BadRequestException('اسم التصنيف مطلوب');
 
-    const slug = slugify(dto.slug?.trim() || dto.nameEn?.trim() || nameAr);
-    await this.ensureUniqueSlug(slug);
     const parentId = await this.ensureParent(dto.parentId);
+    let slugBase = dto.slug?.trim() || dto.nameEn?.trim() || nameAr;
+    if (parentId && !dto.slug?.trim()) {
+      const parent = await this.prisma.category.findUnique({
+        where: { id: parentId },
+        select: { slug: true },
+      });
+      if (parent?.slug) slugBase = `${parent.slug}-${slugBase}`;
+    }
+    const slug = await this.allocateUniqueSlug(slugBase);
 
     const maxSort = await this.prisma.category.aggregate({
       _max: { sortOrder: true },
@@ -108,9 +120,9 @@ export class CategoriesService {
   async update(id: string, dto: UpdateCategoryDto) {
     await this.findOne(id);
 
+    let nextSlug: string | undefined;
     if (dto.slug !== undefined) {
-      const slug = slugify(dto.slug);
-      await this.ensureUniqueSlug(slug, id);
+      nextSlug = await this.allocateUniqueSlug(dto.slug, id);
     }
 
     let parentId: string | null | undefined = undefined;
@@ -134,7 +146,7 @@ export class CategoriesService {
           dto.nameEn === undefined
             ? undefined
             : dto.nameEn?.trim() || null,
-        slug: dto.slug === undefined ? undefined : slugify(dto.slug),
+        slug: nextSlug,
         parentId,
         imageUrl:
           dto.imageUrl === undefined
