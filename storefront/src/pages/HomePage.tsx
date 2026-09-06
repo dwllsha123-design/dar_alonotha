@@ -8,7 +8,7 @@ import { Reveal } from '../components/ui/Reveal';
 import { HERO_SLIDES, HOME_IMAGES } from '../data/homeImages';
 import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
-import { usePageMeta } from '../hooks/usePageMeta';
+import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESC } from '../hooks/usePageMeta';
 
 type Banner = {
   id: string;
@@ -24,7 +24,12 @@ type Banner = {
 };
 
 export function HomePage() {
-  usePageMeta();
+  usePageMeta({
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESC,
+    path: '/',
+    noSuffix: true,
+  });
   const [newItems, setNewItems] = useState<StoreProduct[]>([]);
   const [bestsellers, setBestsellers] = useState<StoreProduct[]>([]);
   const [offers, setOffers] = useState<StoreProduct[]>([]);

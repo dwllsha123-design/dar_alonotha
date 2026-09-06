@@ -135,7 +135,15 @@ export function CatalogPage({
       ? 'اكتشفي أحدث صيحات الموضة التي تبرز أنوثتك'
       : `${filtered.length} منتج`;
 
-  usePageMeta(title);
+  usePageMeta({
+    title,
+    description:
+      mode === 'search'
+        ? `نتائج البحث في متجر دار الأنوثة${q ? `: ${q}` : ''}`
+        : `تسوّقي ${title} من دار الأنوثة — أزياء ومنتجات نسائية مع التوصيل داخل ليبيا.`,
+    path: typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/products',
+    robots: mode === 'search' ? 'noindex,follow' : 'index,follow',
+  });
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -318,7 +326,11 @@ export function CatalogPage({
 
 export function CategoriesPage() {
   const categories = useStoreCategories();
-  usePageMeta('التصنيفات');
+  usePageMeta({
+    title: 'التصنيفات',
+    description: 'تسوّقي حسب التصنيف من مجموعات دار الأنوثة.',
+    path: '/categories',
+  });
 
   const parents = useMemo(() => categories.filter((c) => !c.parentId), [categories]);
 

@@ -7,6 +7,7 @@ import { useToast } from '../components/ui/Toast';
 import { SITE_COPY } from '../data/siteContent';
 import { storeColorHex } from '../lib/colors';
 import { usePageMeta, useProductJsonLd } from '../hooks/usePageMeta';
+import { NotFoundPage } from './NotFoundPage';
 
 const MAX_QTY = 10;
 const RECENT_KEY = 'dar_store_recent';
@@ -42,16 +43,45 @@ export function ProductPage() {
   const [qty, setQty] = useState(1);
   const [imageIdx, setImageIdx] = useState(0);
   const [error, setError] = useState('');
+  const [notFound, setNotFound] = useState(false);
   const [atcState, setAtcState] = useState<'idle' | 'loading' | 'success'>('idle');
   const [openAcc, setOpenAcc] = useState<string | null>('details');
 
-  usePageMeta(product?.nameAr, product?.description || undefined);
+  const primaryImage =
+    product?.images?.find((i) => i.isPrimary)?.url || product?.images?.[0]?.url || undefined;
+
+  usePageMeta(
+    product
+      ? {
+          title: product.nameAr,
+          description:
+            product.description ||
+            `${product.nameAr} من دار الأنوثة — تسوق أونلاين مع التوصيل داخل ليبيا.`,
+          path: `/product/${product.id}`,
+          image: primaryImage,
+          type: 'product',
+        }
+      : notFound
+        ? {
+            title: 'المنتج غير موجود',
+            description: 'المنتج المطلوب غير متوفر في متجر دار الأنوثة.',
+            robots: 'noindex,follow',
+            path: id ? `/product/${id}` : '/product',
+          }
+        : {
+            title: 'تحميل المنتج',
+            robots: 'noindex,follow',
+            path: id ? `/product/${id}` : '/product',
+          },
+  );
   useProductJsonLd(product);
 
   useEffect(() => {
     if (!id) return;
     setAtcState('idle');
     setError('');
+    setNotFound(false);
+    setProduct(null);
     api<StoreProduct>(`/store/products/${id}`)
       .then((p) => {
         setProduct(p);
@@ -68,7 +98,10 @@ export function ProductPage() {
           setRecent([]);
         }
       })
-      .catch((e) => setError(e.message));
+      .catch(() => {
+        setNotFound(true);
+        setError('المنتج غير موجود');
+      });
   }, [id]);
 
   const variant = useMemo(
@@ -141,6 +174,7 @@ export function ProductPage() {
     return true;
   }
 
+  if (notFound && !product) return <NotFoundPage />;
   if (error && !product) return <div className="container section error">{error}</div>;
   if (!product) return <div className="container section muted">جارٍ التحميل...</div>;
 
@@ -223,7 +257,14 @@ export function ProductPage() {
                   onClick={() => setImageIdx(idx)}
                   aria-label={`صورة ${idx + 1}`}
                 >
-                  <img src={img.url} alt="" width={1200} height={1500} loading="lazy" decoding="async" />
+                  <img
+                    src={img.url}
+                    alt={`${product.nameAr}${img.color ? ` — ${img.color}` : ''} — ${idx + 1}`}
+                    width={1200}
+                    height={1500}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </button>
               ))}
             </div>

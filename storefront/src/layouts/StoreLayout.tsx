@@ -8,6 +8,7 @@ import { Footer } from '../components/layout/Footer';
 import { BottomNav } from '../components/layout/BottomNav';
 import { FloatingActions } from '../components/FloatingActions';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { useOrganizationJsonLd, useRobotsForPath } from '../hooks/usePageMeta';
 
 export function StoreLayout() {
   const { count } = useCart();
@@ -16,6 +17,9 @@ export function StoreLayout() {
   const [compact, setCompact] = useState(false);
   const [cartPulse, setCartPulse] = useState(false);
   const categories = useStoreCategories();
+
+  useOrganizationJsonLd();
+  useRobotsForPath(location.pathname);
 
   useEffect(() => {
     setDrawerOpen(false);

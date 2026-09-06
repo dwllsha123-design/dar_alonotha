@@ -26,6 +26,7 @@ import { MarketingModule } from './modules/marketing/marketing.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { SeoModule } from './modules/seo/seo.module';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -62,6 +63,7 @@ import { HealthController } from './health.controller';
     MarketingModule,
     AuditModule,
     BranchesModule,
+    SeoModule,
   ],
   controllers: [HealthController],
   providers: [

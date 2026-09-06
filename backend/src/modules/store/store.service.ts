@@ -53,6 +53,7 @@ type PublicProduct = {
       }>;
   inStock: boolean;
   createdAt: Date;
+  updatedAt?: Date;
   soldCount?: number;
 };
 
@@ -231,6 +232,7 @@ export class StoreService {
       basePrice: Prisma.Decimal | number;
       currency: string;
       createdAt: Date;
+      updatedAt?: Date;
       category: { id: string; nameAr: string; slug: string; parentId?: string | null } | null;
       images: Array<{
         url: string;
@@ -305,6 +307,7 @@ export class StoreService {
       variants,
       inStock: anyInStock,
       createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
     };
   }
 
@@ -433,6 +436,18 @@ export class StoreService {
       })),
     );
     // Hide sold-out products from the public storefront (still editable in admin).
+    return mapped.filter((p) => p.inStock);
+  }
+
+  /** Active in-stock products for sitemap (higher take than storefront list). */
+  async listProductsForSitemap() {
+    const products = await this.prisma.product.findMany({
+      where: { status: 'ACTIVE' },
+      include: this.productInclude(),
+      orderBy: { updatedAt: 'desc' },
+      take: 5000,
+    });
+    const mapped = await Promise.all(products.map((p) => this.mapProduct(p)));
     return mapped.filter((p) => p.inStock);
   }
 

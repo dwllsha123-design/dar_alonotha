@@ -6,6 +6,7 @@ import { useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
 import type { StoreProduct } from '../api/client';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 export function AccountPage() {
   const { user, loading } = useAuth();
@@ -374,6 +375,12 @@ export function ContentPage({
   title: string;
   body: string[];
 }) {
+  usePageMeta({
+    title,
+    description: body[0] || `${title} — دار الأنوثة`,
+    path: typeof window !== 'undefined' ? window.location.pathname : '/',
+  });
+
   return (
     <section className="container section">
       <div className="panel" style={{ display: 'grid', gap: 12, maxWidth: 800 }}>

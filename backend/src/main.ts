@@ -58,6 +58,9 @@ async function bootstrap() {
       { path: 'r/:pageCode/:agentCode', method: RequestMethod.GET },
       { path: '.well-known/apple-app-site-association', method: RequestMethod.GET },
       { path: '.well-known/assetlinks.json', method: RequestMethod.GET },
+      { path: 'robots.txt', method: RequestMethod.GET },
+      { path: 'sitemap.xml', method: RequestMethod.GET },
+      { path: 'seo/product/:id', method: RequestMethod.GET },
     ],
   });
   app.useGlobalPipes(

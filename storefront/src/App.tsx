@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { CartProvider } from './cart/CartContext';
 import { StoreLayout } from './layouts/StoreLayout';
@@ -19,6 +19,7 @@ import {
   ContentPage,
 } from './pages/AccountPages';
 import { ReviewsPage } from './pages/ReviewsPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { captureAttributionFromUrl } from './api/client';
 import { ToastProvider } from './components/ui/Toast';
 import { SITE_COPY, STORE_PHONES, STORE_LOCATION } from './data/siteContent';
@@ -110,7 +111,7 @@ export default function App() {
                   />
                 }
               />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>
         </ToastProvider>
