@@ -105,25 +105,22 @@ export function HomePage() {
 
   return (
     <>
-      <section className="hero-editorial">
+      <section className="hero-editorial" aria-label="واجهة الموقع">
         <div className="hero-editorial-media">
           {heroSlides.map((slide, i) => (
             <img
               key={slide.id}
               className={`hero-ly-slide${i === heroIndex ? ' is-active' : ''}`}
               src={slide.src}
-              alt={slide.alt}
+              alt={slide.alt || 'دار الأنوثة'}
+              width={1920}
+              height={1080}
               decoding="async"
               loading={i === 0 ? 'eager' : 'lazy'}
-              style={{
-                objectFit: slide.fit,
-                objectPosition: `${slide.x}% ${slide.y}%`,
-                transform: `scale(${slide.zoom / 100})`,
-                transformOrigin: `${slide.x}% ${slide.y}%`,
-              }}
+              fetchPriority={i === 0 ? 'high' : 'auto'}
             />
           ))}
-          <div className="hero-ly-overlay" />
+          <div className="hero-ly-overlay" aria-hidden />
         </div>
         <div className="container hero-editorial-copy">
           <p className="hero-brand-label">{SITE_COPY.heroBrand}</p>

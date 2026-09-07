@@ -585,7 +585,7 @@ html[data-theme="light"] .btn.is-success { background: var(--on-surface); color:
   background: var(--gold-bright);
 }
 
-/* Hero — daralonotha.ly: 16:9, min-height 480px (upload 1920×1080) */
+/* Hero — 16:9 full image, no crop (upload 1920×1080) */
 .hero-ly {
   position: relative;
   width: 100%;
@@ -594,10 +594,10 @@ html[data-theme="light"] .btn.is-success { background: var(--on-surface); color:
 .hero-ly-media {
   position: relative;
   width: 100%;
+  height: auto;
   aspect-ratio: 16 / 9;
-  min-height: 480px;
   overflow: hidden;
-  background: var(--surface-low);
+  background: #0a0a0a;
 }
 .hero-ly-slide {
   position: absolute;
@@ -605,7 +605,8 @@ html[data-theme="light"] .btn.is-success { background: var(--on-surface); color:
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center center;
   opacity: 0;
   pointer-events: none;
   transition: opacity .8s ease;
@@ -1634,44 +1635,67 @@ html[data-theme="light"] .announce-bar {
 
 .hero-editorial {
   position: relative;
-  min-height: min(78vh, 720px);
-  display: grid;
-  align-items: end;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
-  background: var(--surface-low);
+  background: #0a0a0a;
 }
 .hero-editorial-media {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
 }
 .hero-editorial-media .hero-ly-slide {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  display: block;
+  object-fit: contain;
+  object-position: center center;
   opacity: 0;
-  transition: opacity 0.8s var(--ease-out), transform 6s ease;
+  pointer-events: none;
+  transition: opacity 0.8s var(--ease-out);
 }
 .hero-editorial-media .hero-ly-slide.is-active {
   opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
 }
 .hero-editorial .hero-ly-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(18,17,16,0.15), rgba(18,17,16,0.72));
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(18,17,16,0.15), rgba(18,17,16,0.55));
   pointer-events: none;
 }
 html[data-theme="light"] .hero-editorial .hero-ly-overlay {
-  background: linear-gradient(180deg, rgba(250,248,244,0.05), rgba(36,33,31,0.55));
+  background: linear-gradient(180deg, rgba(250,248,244,0.05), rgba(36,33,31,0.45));
 }
 .hero-editorial-copy {
-  position: relative;
-  z-index: 2;
-  padding-block: 48px 56px;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  max-width: none;
+  margin: 0;
+  padding: clamp(24px, 5vw, 56px) var(--container-m);
   color: #f3ebe0;
+  pointer-events: none;
+}
+.hero-editorial-copy > * {
+  pointer-events: auto;
   max-width: 720px;
-  margin-inline: auto 0;
+}
+@media (min-width: 768px) {
+  .hero-editorial-copy {
+    padding-inline: var(--container-d);
+  }
 }
 .hero-brand-label {
   margin: 0 0 8px;
