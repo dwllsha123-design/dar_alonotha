@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
-mkdir -p /data /app/uploads/products /app/uploads/banners
+mkdir -p /data \
+  /app/uploads/products \
+  /app/uploads/banners \
+  /app/uploads/categories
 
 # Ensure Query Engine matches this container (debian-openssl-3.0.x)
 echo "[api] prisma generate..."

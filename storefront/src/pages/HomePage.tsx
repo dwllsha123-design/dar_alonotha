@@ -190,22 +190,6 @@ export function HomePage() {
         </div>
       </Reveal>
 
-      <Reveal className="story-lux">
-        <div className="container story-lux-grid">
-          <div className="story-lux-photo">
-            <img src={HOME_IMAGES.comingSoon} alt="أزياء دار الأنوثة" />
-          </div>
-          <div className="story-lux-copy">
-            <span className="kicker">{SITE_COPY.storyKicker}</span>
-            <h2 className="headline-lg">{SITE_COPY.storyTitle}</h2>
-            <p className="body-lg">{SITE_COPY.storyBody}</p>
-            <Link className="btn secondary" to="/products">
-              {SITE_COPY.storyCta}
-            </Link>
-          </div>
-        </div>
-      </Reveal>
-
       {promoBanners.length ? (
         <Reveal className="container section">
           <div className="banner-row">
