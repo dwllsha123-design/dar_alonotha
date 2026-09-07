@@ -123,17 +123,8 @@ export function HomePage() {
           <div className="hero-ly-overlay" aria-hidden />
         </div>
         <div className="container hero-editorial-copy">
-          <p className="hero-brand-label">{SITE_COPY.heroBrand}</p>
           <h1 className="headline-xl hero-title">{activeHero?.title || SITE_COPY.heroTitle}</h1>
           {activeHero?.subtitle ? <p className="body-lg hero-sub">{activeHero.subtitle}</p> : null}
-          <div className="hero-cta-row">
-            <Link className="btn" to={activeHero?.link || '/new'}>
-              {SITE_COPY.heroCta}
-            </Link>
-            <Link className="btn secondary" to="/products">
-              {SITE_COPY.heroCtaSecondary}
-            </Link>
-          </div>
           {heroSlides.length > 1 ? (
             <div className="hero-dots" aria-hidden>
               {heroSlides.map((slide, i) => (
