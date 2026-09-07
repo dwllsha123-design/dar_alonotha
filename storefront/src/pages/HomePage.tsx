@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
 import { ProductGrid, ProductGridSkeleton } from '../components/ProductCard';
+import { CategoryStrip, SectionHeading } from '../components/CategoryStrip';
 import { StoreLink } from '../components/StoreLink';
 import { TrustBar } from '../components/TrustBar';
 import { Reveal } from '../components/ui/Reveal';
@@ -99,7 +100,7 @@ export function HomePage() {
     return () => window.clearInterval(timer);
   }, [heroSlides.length]);
 
-  const featured = categories.filter((c) => !c.parentId).slice(0, 6);
+  const featured = categories.filter((c) => !c.parentId);
   const activeHero = heroSlides[heroIndex];
 
   return (
@@ -153,52 +154,40 @@ export function HomePage() {
       </section>
 
       {featured.length ? (
-        <Reveal className="container section">
-          <h2 className="headline-lg section-title">{SITE_COPY.shopByCategory}</h2>
-          <div className="cat-discover">
-            {featured.map((c) => (
-              <Link key={c.id} to={`/category/${c.slug}`} className="cat-discover-card">
-                <div className="cat-discover-media">
-                  {c.imageUrl ? (
-                    <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
-                  ) : (
-                    <span className="cat-discover-fallback" aria-hidden>
-                      <span className="material-symbols-outlined">checkroom</span>
-                    </span>
-                  )}
-                </div>
-                <h3>{c.nameAr}</h3>
-              </Link>
-            ))}
+        <Reveal className="section section-pb">
+          <div className="container">
+            <CategoryStrip categories={featured} limit={6} />
           </div>
         </Reveal>
       ) : null}
 
-      <Reveal className="container section">
-        <div className="section-head">
-          <h2 className="headline-lg">{SITE_COPY.newArrivals}</h2>
-          <Link className="section-link" to="/new">
-            {SITE_COPY.viewAll}
-          </Link>
-        </div>
-        {loading ? (
-          <ProductGridSkeleton count={4} />
-        ) : newItems.length ? (
-          <ProductGrid products={newItems.slice(0, 8)} />
-        ) : (
-          <div className="coming-soon-banner panel">
-            <img src={HOME_IMAGES.comingSoon} alt="" loading="lazy" decoding="async" />
-            <div>
-              <span className="chip-new">{SITE_COPY.comingSoon}</span>
-              <p className="body-lg" style={{ margin: '8px 0 0' }}>
-                {SITE_COPY.newArrivalsEmpty}
-              </p>
-              <Link className="btn secondary" to="/products" style={{ marginTop: 16 }}>
-                تصفّحي المتجر
-              </Link>
+      <Reveal className="section section-pb">
+        <div className="container">
+          <SectionHeading
+            kicker="شاهد مجموعتنا الجديدة"
+            title={SITE_COPY.newArrivals}
+            linkTo="/new"
+            linkLabel={SITE_COPY.viewAll}
+          />
+          {loading ? (
+            <ProductGridSkeleton count={5} />
+          ) : newItems.length ? (
+            <ProductGrid products={newItems.slice(0, 10)} />
+          ) : (
+            <div className="coming-soon-banner panel">
+              <img src={HOME_IMAGES.comingSoon} alt="" loading="lazy" decoding="async" />
+              <div>
+                <span className="chip-new">{SITE_COPY.comingSoon}</span>
+                <p className="body-lg" style={{ margin: '8px 0 0' }}>
+                  {SITE_COPY.newArrivalsEmpty}
+                </p>
+                <Link className="btn secondary" to="/products" style={{ marginTop: 16 }}>
+                  تصفّحي المتجر
+                </Link>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </Reveal>
 
       <Reveal className="story-lux">
@@ -240,26 +229,30 @@ export function HomePage() {
       ) : null}
 
       {!loading && bestsellers.length ? (
-        <Reveal className="container section">
-          <div className="section-head">
-            <h2 className="headline-lg">{SITE_COPY.bestsellers}</h2>
-            <Link className="section-link" to="/bestseller">
-              {SITE_COPY.viewAll}
-            </Link>
+        <Reveal className="section section-pb">
+          <div className="container">
+            <SectionHeading
+              kicker="الأكثر طلباً"
+              title={SITE_COPY.bestsellers}
+              linkTo="/bestseller"
+              linkLabel={SITE_COPY.viewAll}
+            />
+            <ProductGrid products={bestsellers.slice(0, 10)} />
           </div>
-          <ProductGrid products={bestsellers.slice(0, 8)} />
         </Reveal>
       ) : null}
 
       {!loading && offers.length ? (
-        <Reveal className="container section">
-          <div className="section-head">
-            <h2 className="headline-lg">{SITE_COPY.offers}</h2>
-            <Link className="section-link" to="/offers">
-              {SITE_COPY.viewAll}
-            </Link>
+        <Reveal className="section section-pb">
+          <div className="container">
+            <SectionHeading
+              kicker="عروض خاصة"
+              title={SITE_COPY.offers}
+              linkTo="/offers"
+              linkLabel={SITE_COPY.viewAll}
+            />
+            <ProductGrid products={offers.slice(0, 10)} />
           </div>
-          <ProductGrid products={offers.slice(0, 8)} />
         </Reveal>
       ) : null}
 

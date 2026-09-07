@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type StoreProduct } from '../api/client';
 import { ProductGrid, ProductGridSkeleton } from '../components/ProductCard';
+import { CategoryStrip, SectionHeading } from '../components/CategoryStrip';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { usePageMeta } from '../hooks/usePageMeta';
 import { SITE_COPY } from '../data/siteContent';
@@ -332,59 +333,29 @@ export function CategoriesPage() {
     path: '/categories',
   });
 
-  const parents = useMemo(() => categories.filter((c) => !c.parentId), [categories]);
-
   return (
-    <section className="container section">
-      <div className="section-head">
-        <h2 className="headline-lg" style={{ margin: 0 }}>
-          التصنيفات
-        </h2>
-        <Link className="icon-btn" to="/search-box" aria-label="بحث">
-          <span className="material-symbols-outlined">search</span>
-        </Link>
-      </div>
-      <div className="cat-discover">
-        {parents.map((c) => (
-          <Link key={c.id} to={`/category/${c.slug}`} className="cat-discover-card">
-            <div className="cat-discover-media">
-              {c.imageUrl ? (
-                <img src={c.imageUrl} alt={c.nameAr} loading="lazy" decoding="async" />
-              ) : (
-                <span className="cat-discover-fallback" aria-hidden>
-                  <span className="material-symbols-outlined">
-                    {CATEGORY_ICONS[c.slug] || 'checkroom'}
-                  </span>
-                </span>
-              )}
+    <section className="section section-pb">
+      <div className="container">
+        <SectionHeading kicker="تسوقي حسب التصنيف" title="التصنيفات" />
+        <CategoryStrip categories={categories} />
+        <div className="cat-strip cat-strip-extra">
+          <Link to="/new" className="cat-strip-card">
+            <div className="cat-strip-media">
+              <span className="cat-strip-fallback" aria-hidden>
+                <span className="material-symbols-outlined">new_releases</span>
+              </span>
             </div>
-            <h3>{c.nameAr}</h3>
+            <span className="cat-strip-label">وصل حديثًا</span>
           </Link>
-        ))}
-        <Link to="/new" className="cat-discover-card">
-          <div className="cat-discover-media">
-            <span className="cat-discover-fallback">
-              <span className="material-symbols-outlined">new_releases</span>
-            </span>
-          </div>
-          <h3>وصل حديثًا</h3>
-        </Link>
-        <Link to="/offers" className="cat-discover-card offer">
-          <div className="cat-discover-media">
-            <span className="cat-discover-fallback gold">
-              <span className="material-symbols-outlined">local_offer</span>
-            </span>
-          </div>
-          <h3>العروض</h3>
-        </Link>
-        <Link to="/bestseller" className="cat-discover-card">
-          <div className="cat-discover-media">
-            <span className="cat-discover-fallback">
-              <span className="material-symbols-outlined">trending_up</span>
-            </span>
-          </div>
-          <h3>الأكثر مبيعًا</h3>
-        </Link>
+          <Link to="/offers" className="cat-strip-card">
+            <div className="cat-strip-media">
+              <span className="cat-strip-fallback" aria-hidden>
+                <span className="material-symbols-outlined">local_offer</span>
+              </span>
+            </div>
+            <span className="cat-strip-label">العروض</span>
+          </Link>
+        </div>
       </div>
     </section>
   );

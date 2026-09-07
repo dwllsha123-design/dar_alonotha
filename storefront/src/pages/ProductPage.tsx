@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, money, type StoreProduct } from '../api/client';
 import { useCart, useFavorites } from '../cart/CartContext';
 import { ProductGrid } from '../components/ProductCard';
+import { SectionHeading } from '../components/CategoryStrip';
 import { useToast } from '../components/ui/Toast';
 import { SITE_COPY } from '../data/siteContent';
 import { storeColorHex } from '../lib/colors';
@@ -418,19 +419,15 @@ export function ProductPage() {
       </div>
 
       {product.suggested?.length || product.related?.length ? (
-        <div className="section" style={{ marginTop: 40 }}>
-          <div className="section-head">
-            <h2 className="headline-lg">قد يعجبكِ أيضًا</h2>
-          </div>
+        <div className="section section-pb" style={{ marginTop: 40 }}>
+          <SectionHeading kicker="متجرنا" title="منتجات ذات صلة" />
           <ProductGrid products={(product.suggested?.length ? product.suggested : product.related) || []} />
         </div>
       ) : null}
 
       {recent.length ? (
-        <div className="section">
-          <div className="section-head">
-            <h2 className="headline-lg">شاهدتِ مؤخرًا</h2>
-          </div>
+        <div className="section section-pb">
+          <SectionHeading kicker="تصفحكِ" title="شاهدتِ مؤخرًا" />
           <ProductGrid products={recent} />
         </div>
       ) : null}
