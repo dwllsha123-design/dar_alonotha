@@ -1,0 +1,25 @@
+---
+description: Never delete site content, media, or features during improvements unless explicitly requested
+alwaysApply: true
+---
+
+# Preserve existing store content
+
+When the user asks to improve, redesign, polish, or deploy the site:
+
+## Do not remove unless explicitly asked
+- Do not delete UI sections, nav links, pages, features, or copy the user did not ask to remove.
+- Do not clear, null out, or overwrite `imageUrl` / product images / category images / banners in code or seed.
+- Do not reset catalog, orders, stock, or settings as part of a “fix”.
+- Prefer additive changes: improve styles/layout around existing content.
+
+## Production data safety (Railway)
+- Uploads live under `/app/uploads` (must stay on a Volume).
+- SQLite lives under `/data` (recommend a Volume at `/data`).
+- Never change upload paths, volume mount assumptions, or `DATABASE_URL` in a way that orphans existing files.
+- Do not enable destructive seed/purge on production (`ALLOW_SEED`, purge-demo) unless the user explicitly requests it.
+- On deploy-related work, warn if a change could wipe ephemeral disk or DB without volumes.
+
+## Before shipping an improvement
+- Confirm the change does not drop existing images, categories, products, or checkout/cart behavior.
+- If a redesign would hide or remove something, ask first — do not assume.
