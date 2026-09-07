@@ -6,7 +6,6 @@ import { CategoryStrip, SectionHeading } from '../components/CategoryStrip';
 import { StoreLink } from '../components/StoreLink';
 import { TrustBar } from '../components/TrustBar';
 import { Reveal } from '../components/ui/Reveal';
-import { HERO_SLIDES, HOME_IMAGES } from '../data/homeImages';
 import { SITE_COPY } from '../data/siteContent';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { usePageMeta, DEFAULT_TITLE, DEFAULT_DESC } from '../hooks/usePageMeta';
@@ -41,32 +40,14 @@ export function HomePage() {
 
   const heroBanners = banners.filter((b) => b.placement === 'HERO' && b.imageUrl);
   const promoBanners = banners.filter((b) => b.placement !== 'HERO');
-  const heroSlides =
-    heroBanners.length > 0
-      ? heroBanners.map((b) => ({
-          id: b.id,
-          src: b.imageUrl as string,
-          alt: b.title,
-          fit: (b.imageFit === 'contain' ? 'contain' : 'cover') as 'cover' | 'contain',
-          zoom: b.imageZoom ?? 100,
-          x: b.imagePosX ?? 50,
-          y: b.imagePosY ?? 50,
-          title: b.title,
-          subtitle: b.subtitle,
-          link: b.linkUrl || '/new',
-        }))
-      : HERO_SLIDES.map((src) => ({
-          id: src,
-          src,
-          alt: '',
-          fit: 'cover' as const,
-          zoom: 100,
-          x: 50,
-          y: 50,
-          title: SITE_COPY.heroTitle,
-          subtitle: null as string | null,
-          link: '/new',
-        }));
+  const heroSlides = heroBanners.map((b) => ({
+    id: b.id,
+    src: b.imageUrl as string,
+    alt: b.title,
+    title: b.title,
+    subtitle: b.subtitle,
+    link: b.linkUrl || '/products',
+  }));
 
   useEffect(() => {
     let alive = true;
@@ -123,7 +104,11 @@ export function HomePage() {
           <div className="hero-ly-overlay" aria-hidden />
         </div>
         <div className="container hero-editorial-copy">
-          <h1 className="headline-xl hero-title">{activeHero?.title || SITE_COPY.heroTitle}</h1>
+          {activeHero?.title || !heroSlides.length ? (
+            <h1 className="headline-xl hero-title">
+              {activeHero?.title || SITE_COPY.heroTitle}
+            </h1>
+          ) : null}
           {activeHero?.subtitle ? <p className="body-lg hero-sub">{activeHero.subtitle}</p> : null}
           {heroSlides.length > 1 ? (
             <div className="hero-dots" aria-hidden>
@@ -163,7 +148,6 @@ export function HomePage() {
             <ProductGrid products={newItems.slice(0, 10)} />
           ) : (
             <div className="coming-soon-banner panel">
-              <img src={HOME_IMAGES.comingSoon} alt="" loading="lazy" decoding="async" />
               <div>
                 <span className="chip-new">{SITE_COPY.comingSoon}</span>
                 <p className="body-lg" style={{ margin: '8px 0 0' }}>
