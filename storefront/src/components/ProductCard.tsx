@@ -2,6 +2,7 @@ import { useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { money, type StoreProduct } from '../api/client';
 import { useFavorites } from '../cart/CartContext';
+import { storeColorHex } from '../lib/colors';
 import { useToast } from './ui/Toast';
 
 export function ProductCard({ product }: { product: StoreProduct }) {
@@ -9,13 +10,29 @@ export function ProductCard({ product }: { product: StoreProduct }) {
   const toast = useToast();
   const [pressed, setPressed] = useState(false);
 
-  const img =
-    product.images.find((i) => i.isPrimary)?.url || product.images[0]?.url || '';
+  const gallery = product.images || [];
+  const primary =
+    gallery.find((i) => i.isPrimary && !i.color)?.url ||
+    gallery.find((i) => !i.color)?.url ||
+    gallery.find((i) => i.isPrimary)?.url ||
+    gallery[0]?.url ||
+    '';
+  const altImg =
+    gallery.find((i) => i.url && i.url !== primary && !i.color)?.url ||
+    gallery.find((i) => i.url && i.url !== primary)?.url ||
+    '';
   const soldOut = !product.inStock;
   const isFav = fav.has(product.id);
   const code = product.sku || product.variants[0]?.sku || '';
   const title = code ? `${product.nameAr} - CODE : ${code}` : product.nameAr;
   const onSale = product.discountPercent > 0 && Boolean(product.compareAtPrice);
+  const colors = [
+    ...new Set(
+      (product.variants || [])
+        .map((v) => v.color)
+        .filter((c): c is string => Boolean(c)),
+    ),
+  ].slice(0, 6);
 
   function toggleFav(e: MouseEvent) {
     e.preventDefault();
@@ -26,7 +43,7 @@ export function ProductCard({ product }: { product: StoreProduct }) {
 
   return (
     <article
-      className={`product-card pb-card${soldOut ? ' is-out' : ''}${pressed ? ' is-pressed' : ''}`}
+      className={`product-card pb-card${soldOut ? ' is-out' : ''}${pressed ? ' is-pressed' : ''}${altImg ? ' has-alt' : ''}`}
       onPointerDown={() => setPressed(true)}
       onPointerUp={() => setPressed(false)}
       onPointerLeave={() => setPressed(false)}
@@ -34,15 +51,30 @@ export function ProductCard({ product }: { product: StoreProduct }) {
     >
       <div className="thumb">
         <Link to={`/product/${product.id}`} className="thumb-link" aria-label={product.nameAr}>
-          {img ? (
-            <img
-              className="thumb-img primary"
-              src={img}
-              alt={product.nameAr}
-              width={800}
-              height={1200}
-              loading="lazy"
-            />
+          {primary ? (
+            <>
+              <img
+                className="thumb-img primary"
+                src={primary}
+                alt={product.nameAr}
+                width={520}
+                height={990}
+                loading="lazy"
+                decoding="async"
+              />
+              {altImg ? (
+                <img
+                  className="thumb-img thumb-img-alt"
+                  src={altImg}
+                  alt=""
+                  width={520}
+                  height={990}
+                  loading="lazy"
+                  decoding="async"
+                  aria-hidden
+                />
+              ) : null}
+            </>
           ) : (
             <div className="thumb-ph" aria-hidden>
               <span className="material-symbols-outlined">checkroom</span>
@@ -52,7 +84,7 @@ export function ProductCard({ product }: { product: StoreProduct }) {
 
         {onSale ? (
           <span className="badge-sale-circle" aria-label={`خصم ${product.discountPercent}%`}>
-            خصم!
+            خصم {product.discountPercent}%
           </span>
         ) : null}
 
@@ -76,6 +108,18 @@ export function ProductCard({ product }: { product: StoreProduct }) {
         <Link to={`/product/${product.id}`} className="name">
           {title}
         </Link>
+        {colors.length ? (
+          <div className="card-colors" aria-label="الألوان المتاحة">
+            {colors.map((c) => (
+              <span
+                key={c}
+                className="card-color-dot"
+                title={c}
+                style={{ background: storeColorHex(c) || '#888' }}
+              />
+            ))}
+          </div>
+        ) : null}
         <div className="price-row">
           {product.compareAtPrice ? (
             <span className="compare">{money(product.compareAtPrice)}</span>
@@ -101,7 +145,7 @@ export function ProductGrid({ products }: { products: StoreProduct[] }) {
   );
 }
 
-export function ProductGridSkeleton({ count = 5 }: { count?: number }) {
+export function ProductGridSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div className="grid-products" aria-hidden>
       {Array.from({ length: count }).map((_, i) => (

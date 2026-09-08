@@ -143,7 +143,7 @@ export function HomePage() {
             linkLabel={SITE_COPY.viewAll}
           />
           {loading ? (
-            <ProductGridSkeleton count={5} />
+            <ProductGridSkeleton count={4} />
           ) : newItems.length ? (
             <ProductGrid products={newItems.slice(0, 10)} />
           ) : (
