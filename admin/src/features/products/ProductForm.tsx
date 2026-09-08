@@ -10,6 +10,7 @@ import {
   type CategoryRow,
   type ColorGroup,
   type LocalImage,
+  type LocalVideo,
   type Product,
 } from './productTypes';
 import {
@@ -31,6 +32,19 @@ export type ProductFormProps = {
   onSaved: (productId: string, notice: string) => void;
   onError: (message: string) => void;
 };
+
+async function uploadColorVideo(
+  productId: string,
+  color: string,
+  file: File,
+  durationMs: number | undefined,
+  replace: boolean,
+) {
+  const qs = new URLSearchParams({ color });
+  if (durationMs && durationMs > 0) qs.set('durationMs', String(durationMs));
+  if (replace) qs.set('replace', '1');
+  return apiUpload(`/products/${productId}/color-media/videos/upload?${qs}`, file);
+}
 
 export function ProductForm({
   categories,
@@ -55,6 +69,7 @@ export function ProductForm({
   const [customDiscount, setCustomDiscount] = useState('');
   const [saveBusy, setSaveBusy] = useState(false);
   const [removedImageIds, setRemovedImageIds] = useState<string[]>([]);
+  const [removedColorMediaIds, setRemovedColorMediaIds] = useState<string[]>([]);
 
   const parentCategories = useMemo(
     () => categories.filter((c) => !c.parentId),
@@ -86,6 +101,8 @@ export function ProductForm({
     );
     setSku(editing.sku || '');
     setDiscountPercent(productSalePercent(editing));
+    setRemovedImageIds([]);
+    setRemovedColorMediaIds([]);
     const cat = editing.category;
     if (cat?.parentId) {
       setParentCategoryId(cat.parentId);
@@ -123,12 +140,31 @@ export function ProductForm({
       const images = (editing.images || [])
         .filter((i) => i.color === color)
         .map(makeLocalFromExisting);
+      const mediaForColor = (editing.colorMedia || []).filter((m) => m.color === color);
+      const colorMediaImages = mediaForColor
+        .filter((m) => m.kind === 'IMAGE')
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map(makeLocalFromExisting);
+      const videoRow = mediaForColor.find((m) => m.kind === 'VIDEO');
+      const colorVideo: LocalVideo | null = videoRow
+        ? {
+            key: videoRow.id,
+            file: null,
+            preview: videoRow.url,
+            existingId: videoRow.id,
+            existingUrl: videoRow.url,
+            durationMs: videoRow.durationMs ?? undefined,
+          }
+        : null;
       return {
         key: uid(),
         color,
         images,
+        colorMediaImages,
+        colorVideo,
         sizes,
         qtyBySize,
+        collapsed: true,
       };
     });
     setColorGroups(groups);
@@ -137,7 +173,13 @@ export function ProductForm({
   useEffect(() => {
     return () => {
       revokeAll(generalImages);
-      colorGroups.forEach((g) => revokeAll(g.images));
+      colorGroups.forEach((g) => {
+        revokeAll(g.images);
+        revokeAll(g.colorMediaImages);
+        if (g.colorVideo?.file && g.colorVideo.preview.startsWith('blob:')) {
+          URL.revokeObjectURL(g.colorVideo.preview);
+        }
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -162,7 +204,19 @@ export function ProductForm({
       for (const img of g.images) {
         if (img.existingId) setRemovedImageIds((ids) => [...ids, img.existingId!]);
       }
+      for (const img of g.colorMediaImages) {
+        if (img.existingId) {
+          setRemovedColorMediaIds((ids) => [...ids, img.existingId!]);
+        }
+      }
+      if (g.colorVideo?.existingId) {
+        setRemovedColorMediaIds((ids) => [...ids, g.colorVideo!.existingId!]);
+      }
       revokeAll(g.images);
+      revokeAll(g.colorMediaImages);
+      if (g.colorVideo?.file && g.colorVideo.preview.startsWith('blob:')) {
+        URL.revokeObjectURL(g.colorVideo.preview);
+      }
     }
     setColorGroups((prev) => prev.filter((x) => x.key !== key));
   }
@@ -174,6 +228,46 @@ export function ProductForm({
   function applyDiscountPreset(p: number) {
     setDiscountPercent(p);
     setCustomDiscount(String(p));
+  }
+
+  async function persistColorMedia(productId: string, groups: ColorGroup[]) {
+    for (const mediaId of removedColorMediaIds) {
+      await api(`/products/${productId}/color-media/${mediaId}`, {
+        method: 'DELETE',
+      }).catch(() => undefined);
+    }
+
+    for (const g of groups) {
+      const colorQ = encodeURIComponent(g.color);
+      for (const img of g.colorMediaImages) {
+        if (img.file) {
+          await apiUpload(
+            `/products/${productId}/color-media/images/upload?color=${colorQ}`,
+            img.file,
+          );
+        }
+      }
+
+      const orderedExisting = g.colorMediaImages
+        .filter((i) => i.existingId && !i.file)
+        .map((i) => i.existingId!);
+      if (orderedExisting.length > 1) {
+        await api(`/products/${productId}/color-media/reorder`, {
+          method: 'PATCH',
+          body: JSON.stringify({ color: g.color, orderedIds: orderedExisting }),
+        }).catch(() => undefined);
+      }
+
+      if (g.colorVideo?.file) {
+        await uploadColorVideo(
+          productId,
+          g.color,
+          g.colorVideo.file,
+          g.colorVideo.durationMs,
+          Boolean(g.colorVideo.existingId),
+        );
+      }
+    }
   }
 
   async function persist(asDraft: boolean) {
@@ -254,6 +348,7 @@ export function ProductForm({
             }
           }
         }
+        await persistColorMedia(editing.id, colorGroups);
       } else {
         const variantPayload = colorGroups.flatMap((g) =>
           g.sizes.map((size) => ({
@@ -312,6 +407,7 @@ export function ProductForm({
             }
           }
         }
+        await persistColorMedia(created.id, colorGroups);
       }
 
       if (productId && discountPercent > 0) {
@@ -487,6 +583,28 @@ export function ProductForm({
                   for (const r of removed) {
                     if (r.existingId) {
                       setRemovedImageIds((ids) => [...ids, r.existingId!]);
+                    }
+                  }
+                  const removedMedia = prev.colorMediaImages.filter(
+                    (old) => !next.colorMediaImages.some((n) => n.key === old.key),
+                  );
+                  for (const r of removedMedia) {
+                    if (r.existingId) {
+                      setRemovedColorMediaIds((ids) => [...ids, r.existingId!]);
+                    }
+                  }
+                  if (
+                    prev.colorVideo?.existingId &&
+                    (!next.colorVideo ||
+                      next.colorVideo.key !== prev.colorVideo.key ||
+                      next.colorVideo.file)
+                  ) {
+                    // Explicit remove, or replace with new file (server replace=1)
+                    if (!next.colorVideo) {
+                      setRemovedColorMediaIds((ids) => [
+                        ...ids,
+                        prev.colorVideo!.existingId!,
+                      ]);
                     }
                   }
                 }

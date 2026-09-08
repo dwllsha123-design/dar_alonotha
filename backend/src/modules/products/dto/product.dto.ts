@@ -181,3 +181,12 @@ export class ApplyDiscountDto {
   @Max(90)
   percent!: number;
 }
+
+export class ReorderColorMediaDto {
+  @IsString()
+  color!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  orderedIds!: string[];
+}

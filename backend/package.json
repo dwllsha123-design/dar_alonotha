@@ -17,6 +17,7 @@
     "purge:demo": "ts-node --transpile-only scripts/purge-demo.ts",
     "accuratess:token": "ts-node --transpile-only scripts/print-accuratess-token.ts",
     "test:accuratess": "ts-node --transpile-only scripts/test-accuratess-integration.ts",
+    "test:color-media": "ts-node --transpile-only scripts/test-color-media.ts",
     "db:setup": "prisma migrate dev && prisma db seed"
   },
   "prisma": {
@@ -36,6 +37,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "helmet": "^7.2.0",
+    "music-metadata": "^11.15.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "prisma": "^6.5.0",

@@ -303,6 +303,8 @@ model Product {
   category Category?        @relation(fields: [categoryId], references: [id])
   variants ProductVariant[]
   images   ProductImage[]
+  /// Additive per-color gallery + optional short video (does not replace ProductImage)
+  colorMedia ProductColorMedia[]
 
   @@index([status])
   @@index([categoryId])
@@ -356,6 +358,32 @@ model ProductImage {
   @@index([productId])
   @@index([productId, color])
   @@map("product_images")
+}
+
+/// NEW additive color media (images + optional ≤10s video). Existing ProductImage rows stay untouched.
+enum ProductColorMediaKind {
+  IMAGE
+  VIDEO
+}
+
+model ProductColorMedia {
+  id         String                @id @default(cuid())
+  productId  String
+  /// Same string as ProductVariant.color
+  color      String
+  kind       ProductColorMediaKind
+  url        String
+  alt        String?
+  sortOrder  Int                   @default(0)
+  /// VIDEO only — milliseconds
+  durationMs Int?
+  createdAt  DateTime              @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, color])
+  @@index([productId, color, kind])
+  @@map("product_color_media")
 }
 
 // ─── Warehouse / Inventory ───────────────────────────────

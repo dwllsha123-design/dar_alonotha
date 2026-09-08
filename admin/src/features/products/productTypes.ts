@@ -5,6 +5,16 @@ export type ProductImage = {
   color?: string | null;
 };
 
+export type ProductColorMedia = {
+  id: string;
+  color: string;
+  kind: 'IMAGE' | 'VIDEO';
+  url: string;
+  alt?: string | null;
+  sortOrder: number;
+  durationMs?: number | null;
+};
+
 export type Variant = {
   id: string;
   sku: string;
@@ -31,6 +41,7 @@ export type Product = {
   createdAt?: string;
   category?: { id: string; nameAr: string; slug: string; parentId?: string | null } | null;
   images?: ProductImage[];
+  colorMedia?: ProductColorMedia[];
   variants: Variant[];
 };
 
@@ -51,16 +62,33 @@ export type LocalImage = {
   existingUrl?: string;
 };
 
+export type LocalVideo = {
+  key: string;
+  file: File | null;
+  preview: string;
+  existingId?: string;
+  existingUrl?: string;
+  durationMs?: number;
+};
+
 export type ColorGroup = {
   key: string;
   color: string;
+  /** Existing ProductImage color gallery (unchanged system) */
   images: LocalImage[];
+  /** NEW additive ProductColorMedia images (optional override gallery) */
+  colorMediaImages: LocalImage[];
+  /** NEW optional ≤10s video */
+  colorVideo: LocalVideo | null;
   sizes: string[];
   qtyBySize: Record<string, string>;
+  collapsed?: boolean;
 };
 
 export const MAX_GALLERY_IMAGES = 4;
 export const MAX_COLOR_IMAGES = 4;
+export const MAX_COLOR_MEDIA_IMAGES = 4;
+export const MAX_COLOR_VIDEO_MS = 10_000;
 
 export const SIZE_OPTIONS = [
   { value: 'S', wide: false },

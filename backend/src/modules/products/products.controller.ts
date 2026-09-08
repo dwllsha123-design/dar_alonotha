@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { join } from 'path';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { imageUploadOptions, type UploadedImageFile } from '../../common/image-upload';
+import { videoUploadOptions, type UploadedVideoFile } from '../../common/video-upload';
 import { ProductsService } from './products.service';
 import {
   AddProductImageDto,
@@ -22,6 +23,7 @@ import {
   CreateVariantDto,
   UpdateProductDto,
   ApplyDiscountDto,
+  ReorderColorMediaDto,
 } from './dto/product.dto';
 import { RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PERMISSIONS } from '../../common/permissions';
@@ -121,5 +123,70 @@ export class ProductsController {
   @RequirePermissions(PERMISSIONS.PRODUCTS_EDIT)
   removeImage(@Param('id') id: string, @Param('imageId') imageId: string) {
     return this.productsService.removeImage(id, imageId);
+  }
+
+  /** NEW additive color media (does not touch ProductImage). */
+  @Post(':id/color-media/images/upload')
+  @RequirePermissions(PERMISSIONS.PRODUCTS_EDIT)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      imageUploadOptions(join(process.cwd(), 'uploads', 'products', 'color-media')),
+    ),
+  )
+  uploadColorMediaImage(
+    @Param('id') id: string,
+    @Query('color') color: string,
+    @UploadedFile() file?: UploadedImageFile,
+  ) {
+    if (!file?.filename && !file?.buffer && !file?.path) {
+      throw new BadRequestException('اختاري صورة للرفع');
+    }
+    return this.productsService.uploadColorMediaImage(id, color, file);
+  }
+
+  @Post(':id/color-media/videos/upload')
+  @RequirePermissions(PERMISSIONS.PRODUCTS_EDIT)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      videoUploadOptions(
+        join(process.cwd(), 'uploads', 'products', 'color-media', 'videos'),
+      ),
+    ),
+  )
+  uploadColorMediaVideo(
+    @Param('id') id: string,
+    @Query('color') color: string,
+    @Query('durationMs') durationMs?: string,
+    @Query('replace') replace?: string,
+    @UploadedFile() file?: UploadedVideoFile,
+  ) {
+    if (!file?.filename && !file?.buffer && !file?.path) {
+      throw new BadRequestException('اختاري فيديو للرفع');
+    }
+    const claimed = durationMs ? Number(durationMs) : undefined;
+    const doReplace = replace === '1' || replace === 'true';
+    return this.productsService.uploadColorMediaVideo(
+      id,
+      color,
+      file,
+      claimed,
+      doReplace,
+    );
+  }
+
+  @Patch(':id/color-media/reorder')
+  @RequirePermissions(PERMISSIONS.PRODUCTS_EDIT)
+  reorderColorMedia(@Param('id') id: string, @Body() dto: ReorderColorMediaDto) {
+    return this.productsService.reorderColorMedia(id, dto.color, dto.orderedIds);
+  }
+
+  @Delete(':id/color-media/:mediaId')
+  @RequirePermissions(PERMISSIONS.PRODUCTS_EDIT)
+  removeColorMedia(@Param('id') id: string, @Param('mediaId') mediaId: string) {
+    return this.productsService.removeColorMedia(id, mediaId);
   }
 }

@@ -40,17 +40,27 @@ type PublicProduct = {
   discountPercent: number;
   currency: string;
   images: Array<{ url: string; alt?: string | null; isPrimary: boolean; color?: string | null }>;
-      variants: Array<{
-        id: string;
-        sku: string;
-        color?: string | null;
-        size?: string | null;
-        nameAr?: string | null;
-        imageUrl?: string | null;
-        retailPrice: number;
-        available: number;
-        inStock: boolean;
-      }>;
+  /** NEW additive per-color media; empty means fallback to images */
+  colorMedia: Array<{
+    id: string;
+    color: string;
+    kind: 'IMAGE' | 'VIDEO';
+    url: string;
+    alt?: string | null;
+    sortOrder: number;
+    durationMs?: number | null;
+  }>;
+  variants: Array<{
+    id: string;
+    sku: string;
+    color?: string | null;
+    size?: string | null;
+    nameAr?: string | null;
+    imageUrl?: string | null;
+    retailPrice: number;
+    available: number;
+    inStock: boolean;
+  }>;
   inStock: boolean;
   createdAt: Date;
   updatedAt?: Date;
@@ -241,6 +251,15 @@ export class StoreService {
         sortOrder: number;
         color?: string | null;
       }>;
+      colorMedia?: Array<{
+        id: string;
+        color: string;
+        kind: 'IMAGE' | 'VIDEO';
+        url: string;
+        alt: string | null;
+        sortOrder: number;
+        durationMs: number | null;
+      }>;
       variants: Array<{
         id: string;
         sku: string;
@@ -304,6 +323,18 @@ export class StoreService {
           isPrimary: i.isPrimary,
           color: i.color || null,
         })),
+      colorMedia: (product.colorMedia || [])
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((m) => ({
+          id: m.id,
+          color: m.color,
+          kind: m.kind,
+          url: m.url,
+          alt: m.alt,
+          sortOrder: m.sortOrder,
+          durationMs: m.durationMs,
+        })),
       variants,
       inStock: anyInStock,
       createdAt: product.createdAt,
@@ -315,6 +346,7 @@ export class StoreService {
     return {
       category: { select: { id: true, nameAr: true, slug: true, parentId: true } },
       images: true,
+      colorMedia: { orderBy: { sortOrder: 'asc' as const } },
       variants: { where: { isActive: true } },
     } as const;
   }

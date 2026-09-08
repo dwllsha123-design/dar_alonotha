@@ -41,8 +41,11 @@ export function emptyColorGroup(color: string): ColorGroup {
     key: uid(),
     color,
     images: [],
+    colorMediaImages: [],
+    colorVideo: null,
     sizes: [],
     qtyBySize: {},
+    collapsed: false,
   };
 }
 

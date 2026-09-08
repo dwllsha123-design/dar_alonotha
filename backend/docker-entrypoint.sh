@@ -2,6 +2,8 @@
 set -e
 mkdir -p /data \
   /app/uploads/products \
+  /app/uploads/products/color-media \
+  /app/uploads/products/color-media/videos \
   /app/uploads/banners \
   /app/uploads/categories
 

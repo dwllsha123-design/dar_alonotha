@@ -1303,7 +1303,33 @@ input:focus, select:focus, textarea:focus {
   justify-content: center;
 }
 .pf-image-actions .btn { height: 28px; padding: 0 8px; font-size: 12px; }
-.pf-color-list { display: grid; gap: 14px; }
+.pf-color-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pf-color-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  padding: 4px 2px 2px;
+}
+.pf-color-media-new {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--outline-variant);
+  display: grid;
+  gap: 14px;
+}
+.pf-color-video { margin-top: 4px; }
+.pf-video-preview { max-width: 420px; }
 .pf-color-card {
   border: 1px solid var(--outline-variant);
   border-radius: 12px;

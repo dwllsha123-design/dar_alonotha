@@ -12,6 +12,15 @@ export type StoreProduct = {
   discountPercent: number;
   currency: string;
   images: Array<{ url: string; alt?: string | null; isPrimary: boolean; color?: string | null }>;
+  colorMedia?: Array<{
+    id: string;
+    color: string;
+    kind: 'IMAGE' | 'VIDEO';
+    url: string;
+    alt?: string | null;
+    sortOrder: number;
+    durationMs?: number | null;
+  }>;
   variants: Array<{
     id: string;
     sku: string;

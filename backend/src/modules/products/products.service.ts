@@ -7,6 +7,14 @@ import { sanitizePrices, canViewWholesalePrices, canViewCostPrices } from '../..
 import { CentralInventoryService } from '../inventory/services/central-inventory.service';
 import { CodeSequenceService } from '../inventory/services/code-sequence.service';
 import { saveUploadAsWebp, PRODUCT_IMAGE_SIZE, type UploadedImageFile } from '../../common/image-upload';
+import {
+  MAX_COLOR_VIDEO_MS,
+  assertColorImageSlotAvailable,
+  saveColorVideoUpload,
+  type UploadedVideoFile,
+} from '../../common/video-upload';
+import { unlinkSync, existsSync } from 'fs';
+import { join as pathJoin } from 'path';
 
 @Injectable()
 export class ProductsService {
@@ -37,6 +45,7 @@ export class ProductsService {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
+        colorMedia: { orderBy: { sortOrder: 'asc' } },
         variants: {
           where: { isActive: true },
           include: { stockItems: true },
@@ -72,6 +81,7 @@ export class ProductsService {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
+        colorMedia: { orderBy: { sortOrder: 'asc' } },
         variants: { include: { stockItems: true } },
       },
     });
@@ -521,6 +531,141 @@ export class ProductsService {
         where: { productId, color: image.color, imageUrl: image.url },
         data: { imageUrl: next?.url ?? null },
       });
+    }
+    return { ok: true };
+  }
+
+  /** NEW additive color media — does not modify ProductImage rows. */
+  async uploadColorMediaImage(productId: string, color: string, file: UploadedImageFile) {
+    const colorName = color?.trim();
+    if (!colorName) throw new BadRequestException('اللون مطلوب');
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException('المنتج غير موجود');
+
+    const count = await this.prisma.productColorMedia.count({
+      where: { productId, color: colorName, kind: 'IMAGE' },
+    });
+    assertColorImageSlotAvailable(count);
+
+    const dir = join(process.cwd(), 'uploads', 'products', 'color-media');
+    const saved = await saveUploadAsWebp(file, dir, '/uploads/products/color-media', {
+      ...PRODUCT_IMAGE_SIZE,
+      fit: 'cover',
+    });
+
+    return this.prisma.productColorMedia.create({
+      data: {
+        productId,
+        color: colorName,
+        kind: 'IMAGE',
+        url: saved.url,
+        alt: colorName,
+        sortOrder: count,
+      },
+    });
+  }
+
+  async uploadColorMediaVideo(
+    productId: string,
+    color: string,
+    file: UploadedVideoFile,
+    claimedDurationMs?: number,
+    replace = false,
+  ) {
+    const colorName = color?.trim();
+    if (!colorName) throw new BadRequestException('اللون مطلوب');
+    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new NotFoundException('المنتج غير موجود');
+
+    const existingVideo = await this.prisma.productColorMedia.findFirst({
+      where: { productId, color: colorName, kind: 'VIDEO' },
+    });
+    if (existingVideo && !replace) {
+      throw new BadRequestException('يوجد فيديو لهذا اللون مسبقاً. احذفيه أولاً أو استبدليه.');
+    }
+
+    const dir = join(process.cwd(), 'uploads', 'products', 'color-media', 'videos');
+    const saved = await saveColorVideoUpload(
+      file,
+      dir,
+      '/uploads/products/color-media/videos',
+      claimedDurationMs,
+    );
+    if (saved.durationMs > MAX_COLOR_VIDEO_MS) {
+      throw new BadRequestException('مدة الفيديو يجب ألا تتجاوز 10 ثوانٍ.');
+    }
+
+    if (existingVideo && replace) {
+      await this.prisma.productColorMedia.delete({ where: { id: existingVideo.id } });
+      if (existingVideo.url.startsWith('/uploads/products/color-media/')) {
+        const disk = pathJoin(process.cwd(), existingVideo.url.replace(/^\//, ''));
+        try {
+          if (existsSync(disk)) unlinkSync(disk);
+        } catch {
+          /* ignore orphan */
+        }
+      }
+    }
+
+    return this.prisma.productColorMedia.create({
+      data: {
+        productId,
+        color: colorName,
+        kind: 'VIDEO',
+        url: saved.url,
+        alt: colorName,
+        sortOrder: 100,
+        durationMs: saved.durationMs,
+      },
+    });
+  }
+
+  async reorderColorMedia(
+    productId: string,
+    color: string,
+    orderedIds: string[],
+  ) {
+    const colorName = color?.trim();
+    if (!colorName) throw new BadRequestException('اللون مطلوب');
+    const rows = await this.prisma.productColorMedia.findMany({
+      where: { productId, color: colorName, kind: 'IMAGE' },
+    });
+    const idSet = new Set(rows.map((r) => r.id));
+    for (const id of orderedIds) {
+      if (!idSet.has(id)) {
+        throw new BadRequestException('ترتيب غير صالح');
+      }
+    }
+    await this.prisma.$transaction(
+      orderedIds.map((id, idx) =>
+        this.prisma.productColorMedia.update({
+          where: { id },
+          data: { sortOrder: idx },
+        }),
+      ),
+    );
+    return this.prisma.productColorMedia.findMany({
+      where: { productId, color: colorName },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  async removeColorMedia(productId: string, mediaId: string) {
+    const row = await this.prisma.productColorMedia.findFirst({
+      where: { id: mediaId, productId },
+    });
+    if (!row) throw new NotFoundException('الوسائط غير موجودة');
+
+    await this.prisma.productColorMedia.delete({ where: { id: mediaId } });
+
+    // Best-effort delete of NEW color-media file only (never ProductImage paths)
+    if (row.url.startsWith('/uploads/products/color-media/')) {
+      const disk = pathJoin(process.cwd(), row.url.replace(/^\//, ''));
+      try {
+        if (existsSync(disk)) unlinkSync(disk);
+      } catch {
+        /* leave orphan file rather than fail */
+      }
     }
     return { ok: true };
   }

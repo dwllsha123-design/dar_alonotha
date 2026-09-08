@@ -1929,6 +1929,37 @@ html[data-theme="light"] .hero-editorial .hero-ly-overlay {
   display: block;
   transition: opacity 250ms ease, transform 350ms var(--ease-out);
 }
+.gallery-main-video {
+  width: 100%;
+  max-height: 70vh;
+  display: block;
+  background: #111;
+  object-fit: contain;
+}
+.gallery-thumb-video {
+  position: relative;
+  display: block;
+  width: 72px;
+  height: 90px;
+  overflow: hidden;
+}
+.gallery-thumb-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.gallery-play-icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 28px;
+  height: 28px;
+  font-size: 28px;
+  color: #fff;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.45));
+  pointer-events: none;
+}
 @media (hover: hover) and (pointer: fine) {
   .gallery-main:hover .gallery-main-img { transform: scale(1.04); }
 }

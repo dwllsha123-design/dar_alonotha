@@ -110,26 +110,71 @@ export function ProductPage() {
     [product, variantId],
   );
 
-  const galleryImages = useMemo(() => {
-    if (!product) return [] as Array<{ url: string; alt?: string | null; isPrimary?: boolean; color?: string | null }>;
-    const all = product.images || [];
+  const galleryItems = useMemo(() => {
+    type GalleryItem = {
+      url: string;
+      alt?: string | null;
+      isPrimary?: boolean;
+      color?: string | null;
+      kind: 'IMAGE' | 'VIDEO';
+    };
+    if (!product) return [] as GalleryItem[];
     const color = variant?.color || null;
-    const colorImgs = color ? all.filter((i) => i.color === color) : [];
-    if (colorImgs.length) return colorImgs;
-    if (variant?.imageUrl) {
-      return [{ url: variant.imageUrl, alt: color, isPrimary: true, color }];
+    const newMedia = color
+      ? (product.colorMedia || [])
+          .filter((m) => m.color === color)
+          .slice()
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+      : [];
+    const newImages = newMedia.filter((m) => m.kind === 'IMAGE');
+    const newVideo = newMedia.find((m) => m.kind === 'VIDEO');
+
+    if (newImages.length || newVideo) {
+      const items: GalleryItem[] = newImages.map((m, idx) => ({
+        url: m.url,
+        alt: m.alt || color,
+        isPrimary: idx === 0,
+        color,
+        kind: 'IMAGE',
+      }));
+      if (newVideo) {
+        items.push({
+          url: newVideo.url,
+          alt: newVideo.alt || color,
+          color,
+          kind: 'VIDEO',
+        });
+      }
+      return items;
     }
-    const generic = all.filter((i) => !i.color);
-    if (generic.length) return generic;
-    return all;
+
+    // Fallback: existing gallery behavior (unchanged)
+    const all = product.images || [];
+    const colorImgs = color ? all.filter((i) => i.color === color) : [];
+    const legacy = colorImgs.length
+      ? colorImgs
+      : variant?.imageUrl
+        ? [{ url: variant.imageUrl, alt: color, isPrimary: true, color }]
+        : (() => {
+            const generic = all.filter((i) => !i.color);
+            return generic.length ? generic : all;
+          })();
+    return legacy.map((i) => ({
+      url: i.url,
+      alt: i.alt,
+      isPrimary: i.isPrimary,
+      color: i.color,
+      kind: 'IMAGE' as const,
+    }));
   }, [product, variant]);
 
   useEffect(() => {
     setImageIdx(0);
   }, [variant?.id, variant?.color]);
 
-  const images = galleryImages;
-  const mainImage = images[imageIdx]?.url || images[0]?.url || '';
+  const images = galleryItems;
+  const active = images[imageIdx] || images[0];
+  const mainImage = active?.kind === 'IMAGE' ? active.url : images.find((i) => i.kind === 'IMAGE')?.url || '';
   const colors = [...new Set((product?.variants || []).map((v) => v.color).filter(Boolean))];
   const sizes = [...new Set((product?.variants || []).map((v) => v.size).filter(Boolean))];
 
@@ -225,7 +270,18 @@ export function ProductPage() {
       <div className="product-layout">
         <div className="gallery">
           <div className={`gallery-main${unavailable ? ' is-unavailable' : ''}`}>
-            {mainImage ? (
+            {active?.kind === 'VIDEO' ? (
+              <video
+                key={active.url}
+                className="gallery-main-video"
+                src={active.url}
+                controls
+                playsInline
+                muted
+                preload="metadata"
+                poster={mainImage || undefined}
+              />
+            ) : mainImage ? (
               <img
                 key={mainImage}
                 className="gallery-main-img"
@@ -252,20 +308,27 @@ export function ProductPage() {
             <div className="gallery-thumbs gallery-thumbs-scroll">
               {images.map((img, idx) => (
                 <button
-                  key={`${img.url}-${idx}`}
+                  key={`${img.kind}-${img.url}-${idx}`}
                   type="button"
                   className={idx === imageIdx ? 'active' : ''}
                   onClick={() => setImageIdx(idx)}
-                  aria-label={`صورة ${idx + 1}`}
+                  aria-label={img.kind === 'VIDEO' ? `فيديو ${idx + 1}` : `صورة ${idx + 1}`}
                 >
-                  <img
-                    src={img.url}
-                    alt={`${product.nameAr}${img.color ? ` — ${img.color}` : ''} — ${idx + 1}`}
-                    width={1200}
-                    height={1500}
-                    loading="lazy"
-                    decoding="async"
-                  />
+                  {img.kind === 'VIDEO' ? (
+                    <span className="gallery-thumb-video">
+                      <video src={img.url} muted playsInline preload="metadata" />
+                      <span className="material-symbols-outlined gallery-play-icon">play_circle</span>
+                    </span>
+                  ) : (
+                    <img
+                      src={img.url}
+                      alt={`${product.nameAr}${img.color ? ` — ${img.color}` : ''} — ${idx + 1}`}
+                      width={1200}
+                      height={1500}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
                 </button>
               ))}
             </div>
