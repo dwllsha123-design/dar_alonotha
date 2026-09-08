@@ -258,14 +258,18 @@ export class UsersService {
     await this.findOne(id);
 
     return this.prisma.$transaction(async (tx) => {
-      if (dto.roleCodes) {
-        const roles = await tx.role.findMany({
-          where: { code: { in: dto.roleCodes } },
-        });
-        await tx.userRole.deleteMany({ where: { userId: id } });
-        await tx.userRole.createMany({
-          data: roles.map((r) => ({ userId: id, roleId: r.id })),
-        });
+      if (dto.roleCodes !== undefined) {
+        if (!Array.isArray(dto.roleCodes) || dto.roleCodes.length === 0) {
+          // omit empty → preserve roles (do not wipe)
+        } else {
+          const roles = await tx.role.findMany({
+            where: { code: { in: dto.roleCodes } },
+          });
+          await tx.userRole.deleteMany({ where: { userId: id } });
+          await tx.userRole.createMany({
+            data: roles.map((r) => ({ userId: id, roleId: r.id })),
+          });
+        }
       }
 
       return tx.user.update({

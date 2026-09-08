@@ -1,7 +1,18 @@
-# Low-resource VPS stack: Nginx (static) + Nest API + SQLite
-# No PostgreSQL/Redis containers — keeps RAM under ~700MB at idle.
+# Compose for self-hosted / VPS. Railway production uses managed Postgres + volume.
+# Production app requires PostgreSQL (SQLite is legacy tooling only).
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: dar
+      POSTGRES_PASSWORD: dar
+      POSTGRES_DB: dar_alonotha
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    mem_limit: 256m
+
   api:
     build:
       context: ./backend
@@ -9,13 +20,15 @@ services:
       - deploy/.env
     environment:
       NODE_ENV: production
-      DATABASE_URL: file:/data/app.db
+      DATABASE_URL: postgresql://dar:dar@postgres:5432/dar_alonotha
       PORT: "3000"
       NODE_OPTIONS: --max-old-space-size=384
+      RAILWAY_VOLUME_MOUNT_PATH: /app/uploads
       PRISMA_CLI_BINARY_TARGETS: debian-openssl-3.0.x
     volumes:
-      - sqlite_data:/data
       - uploads_data:/app/uploads
+    depends_on:
+      - postgres
     restart: unless-stopped
     mem_limit: 512m
     memswap_limit: 512m
@@ -33,13 +46,10 @@ services:
         VITE_API_URL: /api/v1
         VITE_BASE: /admin/
     environment:
-      # Docker Compose DNS name of the Nest service (see services.api)
       API_UPSTREAM: api:3000
-      # HTTP only inside the container (TLS/443 stays at reverse proxy / Railway edge)
       PORT: "80"
     ports:
       - "80:80"
-    # Do not publish 443 on the web container — no certs inside this image
     volumes:
       - uploads_data:/var/www/uploads
     depends_on:
@@ -54,5 +64,5 @@ services:
         max-file: "2"
 
 volumes:
-  sqlite_data:
+  pg_data:
   uploads_data:

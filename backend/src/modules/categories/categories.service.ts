@@ -3,11 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { join } from 'path';
 import {
   saveUploadAsWebp,
   type UploadedImageFile,
 } from '../../common/image-upload';
+import { patchOptionalImageUrl } from '../../common/patch-semantics';
+import { uploadDir, uploadPublicPrefix } from '../../common/upload-paths';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 
@@ -151,10 +152,7 @@ export class CategoriesService {
             : dto.nameEn?.trim() || null,
         slug: nextSlug,
         parentId,
-        imageUrl:
-          dto.imageUrl === undefined
-            ? undefined
-            : dto.imageUrl?.trim() || null,
+        imageUrl: patchOptionalImageUrl(dto.imageUrl),
         sortOrder: dto.sortOrder,
         isActive: dto.isActive,
       },
@@ -167,8 +165,8 @@ export class CategoriesService {
 
   async uploadImage(id: string, file: UploadedImageFile) {
     await this.findOne(id);
-    const dir = join(process.cwd(), 'uploads', 'categories');
-    const saved = await saveUploadAsWebp(file, dir, '/uploads/categories', {
+    const dir = uploadDir('categories');
+    const saved = await saveUploadAsWebp(file, dir, uploadPublicPrefix('categories'), {
       width: 1200,
       height: 1500,
       fit: 'cover',

@@ -60,3 +60,5 @@ GoogleService-Info.plist
 *.jks
 *.p8
 *.mobileprovision
+
+migration-data/

@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { join } from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto, CreateVariantDto, UpdateProductDto } from './dto/product.dto';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -13,6 +12,7 @@ import {
   saveColorVideoUpload,
   type UploadedVideoFile,
 } from '../../common/video-upload';
+import { uploadDir, uploadPublicPrefix, uploadRoot } from '../../common/upload-paths';
 import { unlinkSync, existsSync } from 'fs';
 import { join as pathJoin } from 'path';
 
@@ -476,7 +476,7 @@ export class ProductsService {
     });
     if (colorCount === 0) {
       await this.prisma.productVariant.updateMany({
-        where: { productId, color },
+        where: { productId, color, imageUrl: null },
         data: { imageUrl: url },
       });
     }
@@ -508,8 +508,8 @@ export class ProductsService {
   }
 
   async uploadImage(productId: string, file: UploadedImageFile, color?: string) {
-    const dir = join(process.cwd(), 'uploads', 'products');
-    const saved = await saveUploadAsWebp(file, dir, '/uploads/products', {
+    const dir = uploadDir('products');
+    const saved = await saveUploadAsWebp(file, dir, uploadPublicPrefix('products'), {
       ...PRODUCT_IMAGE_SIZE,
       fit: 'cover',
     });
@@ -547,8 +547,8 @@ export class ProductsService {
     });
     assertColorImageSlotAvailable(count);
 
-    const dir = join(process.cwd(), 'uploads', 'products', 'color-media');
-    const saved = await saveUploadAsWebp(file, dir, '/uploads/products/color-media', {
+    const dir = uploadDir('products', 'color-media');
+    const saved = await saveUploadAsWebp(file, dir, uploadPublicPrefix('products', 'color-media'), {
       ...PRODUCT_IMAGE_SIZE,
       fit: 'cover',
     });
@@ -584,11 +584,11 @@ export class ProductsService {
       throw new BadRequestException('يوجد فيديو لهذا اللون مسبقاً. احذفيه أولاً أو استبدليه.');
     }
 
-    const dir = join(process.cwd(), 'uploads', 'products', 'color-media', 'videos');
+    const dir = uploadDir('products', 'color-media', 'videos');
     const saved = await saveColorVideoUpload(
       file,
       dir,
-      '/uploads/products/color-media/videos',
+      uploadPublicPrefix('products', 'color-media', 'videos'),
       claimedDurationMs,
     );
     if (saved.durationMs > MAX_COLOR_VIDEO_MS) {
@@ -598,7 +598,10 @@ export class ProductsService {
     if (existingVideo && replace) {
       await this.prisma.productColorMedia.delete({ where: { id: existingVideo.id } });
       if (existingVideo.url.startsWith('/uploads/products/color-media/')) {
-        const disk = pathJoin(process.cwd(), existingVideo.url.replace(/^\//, ''));
+        const disk = pathJoin(
+          uploadRoot(),
+          existingVideo.url.replace(/^\/uploads\//, ''),
+        );
         try {
           if (existsSync(disk)) unlinkSync(disk);
         } catch {
@@ -660,7 +663,7 @@ export class ProductsService {
 
     // Best-effort delete of NEW color-media file only (never ProductImage paths)
     if (row.url.startsWith('/uploads/products/color-media/')) {
-      const disk = pathJoin(process.cwd(), row.url.replace(/^\//, ''));
+      const disk = pathJoin(uploadRoot(), row.url.replace(/^\/uploads\//, ''));
       try {
         if (existsSync(disk)) unlinkSync(disk);
       } catch {

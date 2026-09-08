@@ -1,14 +1,14 @@
 generator client {
   provider      = "prisma-client-js"
-  // native = local/dev; debian-openssl-3.0.x = Docker/Railway (node:20-bookworm-slim)
+  // Separate client so production can keep using SQLite @prisma/client
+  output        = "../generated/postgres-client"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
-  // Production: Railway Postgres via DATABASE_URL=${{Postgres.DATABASE_URL}}
-  // Never fall back to SQLite in production.
-  url      = env("DATABASE_URL")
+  // Never use production DATABASE_URL here — migration uses POSTGRES_TARGET_URL only
+  url      = env("POSTGRES_TARGET_URL")
 }
 
 // ─── Enums ───────────────────────────────────────────────

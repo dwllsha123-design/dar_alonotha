@@ -16,6 +16,10 @@ async function main() {
       'الـ seed مرفوض في الإنتاج. لتشغيله مرة واحدة فقط: ALLOW_SEED=true',
     );
   }
+  const dbUrl = process.env.DATABASE_URL || '';
+  if (production && (dbUrl.startsWith('file:') || /sqlite/i.test(dbUrl))) {
+    throw new Error('Seed refused: production must use PostgreSQL DATABASE_URL');
+  }
   console.log('Seeding دار الأنوثة...');
 
   for (const p of PERMISSION_META) {

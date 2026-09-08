@@ -4,14 +4,18 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import { mkdirSync } from 'fs';
-import { join } from 'path';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { assertProductionEnv, isProduction } from './common/production-env';
+import {
+  assertSafeUploadRoot,
+  uploadDir,
+  uploadRoot,
+} from './common/upload-paths';
 
 async function bootstrap() {
   assertProductionEnv();
+  assertSafeUploadRoot();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
   app.set('trust proxy', 1);
@@ -46,12 +50,12 @@ async function bootstrap() {
     });
   }
 
-  const uploadsDir = join(process.cwd(), 'uploads');
-  mkdirSync(join(uploadsDir, 'products'), { recursive: true });
-  mkdirSync(join(uploadsDir, 'products', 'color-media'), { recursive: true });
-  mkdirSync(join(uploadsDir, 'products', 'color-media', 'videos'), { recursive: true });
-  mkdirSync(join(uploadsDir, 'banners'), { recursive: true });
-  mkdirSync(join(uploadsDir, 'categories'), { recursive: true });
+  const uploadsDir = uploadRoot();
+  uploadDir('products');
+  uploadDir('products', 'color-media');
+  uploadDir('products', 'color-media', 'videos');
+  uploadDir('banners');
+  uploadDir('categories');
   app.useStaticAssets(uploadsDir, { prefix: '/uploads/' });
 
   app.setGlobalPrefix('api/v1', {

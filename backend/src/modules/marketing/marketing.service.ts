@@ -6,9 +6,10 @@ import {
 import { PromoDiscountType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { patchOptionalImageUrl } from '../../common/patch-semantics';
+import { uploadDir, uploadPublicPrefix } from '../../common/upload-paths';
 import { UpsertBannerDto, UpsertPromoDto, UpdateBannerDto, UpdatePromoDto } from './marketing.dto';
 import { saveUploadAsWebp, type UploadedImageFile } from '../../common/image-upload';
-import { join } from 'path';
 
 @Injectable()
 export class MarketingService {
@@ -139,8 +140,8 @@ export class MarketingService {
       data: {
         title: dto.title,
         subtitle: dto.subtitle,
-        imageUrl: dto.imageUrl,
-        linkUrl: dto.linkUrl,
+        imageUrl: patchOptionalImageUrl(dto.imageUrl),
+        linkUrl: dto.linkUrl === undefined ? undefined : dto.linkUrl?.trim() || null,
         placement: dto.placement,
         imageFit: dto.imageFit,
         imageZoom: dto.imageZoom,
@@ -176,8 +177,8 @@ export class MarketingService {
   async uploadBannerImage(id: string, file: UploadedImageFile) {
     const banner = await this.prisma.banner.findUnique({ where: { id } });
     if (!banner) throw new NotFoundException('اللافتة غير موجودة');
-    const dir = join(process.cwd(), 'uploads', 'banners');
-    const saved = await saveUploadAsWebp(file, dir, '/uploads/banners');
+    const dir = uploadDir('banners');
+    const saved = await saveUploadAsWebp(file, dir, uploadPublicPrefix('banners'));
     return this.prisma.banner.update({
       where: { id },
       data: { imageUrl: saved.url },

@@ -18,7 +18,11 @@
     "accuratess:token": "ts-node --transpile-only scripts/print-accuratess-token.ts",
     "test:accuratess": "ts-node --transpile-only scripts/test-accuratess-integration.ts",
     "test:color-media": "ts-node --transpile-only scripts/test-color-media.ts",
-    "db:setup": "prisma migrate dev && prisma db seed"
+    "test:migration-safety": "ts-node --transpile-only scripts/test-migration-safety.ts",
+    "test:persistence": "ts-node --transpile-only scripts/test-persistence-guards.ts",
+    "prisma:generate:sqlite-legacy": "prisma generate --schema=prisma/sqlite-legacy/schema.prisma",
+    "db:migrate:sqlite-to-postgres": "ts-node --transpile-only scripts/migrate-sqlite-to-postgres.ts",
+    "db:setup": "echo \"db:setup is for local SQLite legacy only — use prisma migrate deploy for production Postgres\" && exit 1"
   },
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"

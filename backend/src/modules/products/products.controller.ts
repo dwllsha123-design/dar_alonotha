@@ -12,10 +12,10 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { join } from 'path';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { imageUploadOptions, type UploadedImageFile } from '../../common/image-upload';
 import { videoUploadOptions, type UploadedVideoFile } from '../../common/video-upload';
+import { uploadDir } from '../../common/upload-paths';
 import { ProductsService } from './products.service';
 import {
   AddProductImageDto,
@@ -104,7 +104,7 @@ export class ProductsController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      imageUploadOptions(join(process.cwd(), 'uploads', 'products')),
+      imageUploadOptions(uploadDir('products')),
     ),
   )
   uploadImage(
@@ -132,7 +132,7 @@ export class ProductsController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      imageUploadOptions(join(process.cwd(), 'uploads', 'products', 'color-media')),
+      imageUploadOptions(uploadDir('products', 'color-media')),
     ),
   )
   uploadColorMediaImage(
@@ -152,9 +152,7 @@ export class ProductsController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      videoUploadOptions(
-        join(process.cwd(), 'uploads', 'products', 'color-media', 'videos'),
-      ),
+      videoUploadOptions(uploadDir('products', 'color-media', 'videos')),
     ),
   )
   uploadColorMediaVideo(

@@ -16,8 +16,21 @@ export function assertProductionEnv() {
     );
   }
 
-  if (!process.env.DATABASE_URL) {
-    throw new Error('في الإنتاج يجب تعيين DATABASE_URL (مثال: file:/data/app.db).');
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  if (!dbUrl) {
+    throw new Error(
+      'في الإنتاج يجب تعيين DATABASE_URL إلى PostgreSQL (مثال: ${{Postgres.DATABASE_URL}}).',
+    );
+  }
+  if (dbUrl.startsWith('file:') || /sqlite/i.test(dbUrl)) {
+    throw new Error(
+      'في الإنتاج ممنوع استخدام SQLite. عيّني DATABASE_URL إلى Railway PostgreSQL فقط — لا يوجد fallback إلى ملف محلي.',
+    );
+  }
+  if (!/^postgres(ql)?:\/\//i.test(dbUrl)) {
+    throw new Error(
+      'في الإنتاج يجب أن يبدأ DATABASE_URL بـ postgresql:// أو postgres://',
+    );
   }
 
   const cors = (process.env.CORS_ORIGINS || '')
@@ -26,7 +39,7 @@ export function assertProductionEnv() {
     .filter(Boolean);
   if (!cors.length) {
     throw new Error(
-      'في الإنتاج يجب تعيين CORS_ORIGINS بنطاقات الواجهات، مثال: https://dar-alunotha.ly,https://admin.dar-alunotha.ly',
+      'في الإنتاج يجب تعيين CORS_ORIGINS بنطاقات الواجهات، مثال: https://daralonotha.com,https://admin.daralonotha.com',
     );
   }
 

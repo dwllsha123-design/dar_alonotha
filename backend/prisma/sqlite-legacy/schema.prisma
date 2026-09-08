@@ -1,14 +1,13 @@
 generator client {
-  provider      = "prisma-client-js"
-  // native = local/dev; debian-openssl-3.0.x = Docker/Railway (node:20-bookworm-slim)
+  provider = "prisma-client-js"
+  output   = "../generated/sqlite-legacy-client"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
+// LEGACY / migration-tooling ONLY. Production must never use this schema.
 datasource db {
-  provider = "postgresql"
-  // Production: Railway Postgres via DATABASE_URL=${{Postgres.DATABASE_URL}}
-  // Never fall back to SQLite in production.
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = env("SQLITE_SOURCE_URL")
 }
 
 // ─── Enums ───────────────────────────────────────────────

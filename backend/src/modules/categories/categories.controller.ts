@@ -11,11 +11,11 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { join } from 'path';
 import {
   imageUploadOptions,
   type UploadedImageFile,
 } from '../../common/image-upload';
+import { uploadDir } from '../../common/upload-paths';
 import { RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PERMISSIONS } from '../../common/permissions';
 import { CategoriesService } from './categories.service';
@@ -56,7 +56,7 @@ export class CategoriesController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      imageUploadOptions(join(process.cwd(), 'uploads', 'categories')),
+      imageUploadOptions(uploadDir('categories')),
     ),
   )
   uploadImage(

@@ -12,8 +12,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { join } from 'path';
 import { imageUploadOptions, type UploadedImageFile } from '../../common/image-upload';
+import { uploadDir } from '../../common/upload-paths';
 import {
   MarketingService,
 } from './marketing.service';
@@ -101,7 +101,7 @@ export class MarketingController {
   @UseInterceptors(
     FileInterceptor(
       'file',
-      imageUploadOptions(join(process.cwd(), 'uploads', 'banners')),
+      imageUploadOptions(uploadDir('banners')),
     ),
   )
   uploadBannerImage(
