@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DeliveryStatus, Prisma } from '@prisma/client';
@@ -22,7 +23,12 @@ import {
 } from '../../common/delivery/delivery-zones';
 import { StoreService } from '../store/store.service';
 import { AccuratessService } from './accuratess.service';
-import { extractAccuratessTracking } from './accuratess-tracking';
+import {
+  asAccuratessShipmentId,
+  asAccuratessTrackingCode,
+  extractAccuratessTracking,
+  resolvePrintAccuratessCode,
+} from './accuratess-tracking';
 import { CentralInventoryService } from '../inventory/services/central-inventory.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommissionsService } from '../commissions/commissions.service';
@@ -35,6 +41,8 @@ const orderPageSelect = {
 
 @Injectable()
 export class DeliveryService {
+  private readonly logger = new Logger(DeliveryService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storeService: StoreService,
@@ -229,6 +237,7 @@ export class DeliveryService {
         ...d,
         trackingNumber: accuratessCode || d.trackingNumber,
         accuratessCode,
+        accuratessShipmentId: d.accuratessShipmentId || null,
       };
     });
   }
@@ -351,6 +360,7 @@ export class DeliveryService {
 
     // خارج طرابلس: إرسال لشركة Accuratess بمفتاح حساب الصفحة إن وُجد
     let accuratessResult: Record<string, unknown> | null = null;
+    let accuratessShipmentId: string | undefined;
     if (type === 'EXTERNAL') {
       const existingTracked = await this.prisma.delivery.findFirst({
         where: {
@@ -467,8 +477,16 @@ export class DeliveryService {
             shipped.shipment as never,
             (shipped as { raw?: unknown }).raw ?? shipped,
           );
-          if (!extracted.code) {
+          status = 'ASSIGNED';
+          trackingNumber = asAccuratessTrackingCode(extracted.code) || undefined;
+          externalRef = trackingNumber;
+          accuratessShipmentId = asAccuratessShipmentId(extracted.id) || undefined;
+          trackingUrl = extracted.trackingUrl || undefined;
+          if (!trackingNumber) {
             const errMsg = 'فشل إنشاء شحنة التوصيل لدى Accurate — لم يُرجع رقم شحنة';
+            this.logger.error(
+              `Accuratess missing code after save order=${order.orderNumber} shipmentId=${accuratessShipmentId ?? '—'}`,
+            );
             await this.prisma.order.update({
               where: { id: order.id },
               data: {
@@ -478,14 +496,10 @@ export class DeliveryService {
             });
             throw new BadRequestException(errMsg);
           }
-
-          status = 'ASSIGNED';
-          trackingNumber = extracted.code;
-          externalRef = extracted.id || extracted.code;
-          trackingUrl = extracted.trackingUrl || undefined;
           notes = [
             notes,
-            `Accuratess code=${extracted.code}`,
+            `Accuratess code=${trackingNumber}`,
+            accuratessShipmentId ? `shipmentId=${accuratessShipmentId}` : '',
             trackingUrl ? `track=${trackingUrl}` : '',
             `source_page=${senderName}`,
             order.pagePublicCode != null ? `pageCode=${order.pagePublicCode}` : '',
@@ -538,6 +552,7 @@ export class DeliveryService {
           shippingSlipNo,
           trackingNumber,
           externalRef,
+          accuratessShipmentId,
           trackingUrl,
           lastSyncedAt: trackingNumber ? new Date() : undefined,
           assignedAt: status === 'ASSIGNED' ? new Date() : undefined,
@@ -783,6 +798,7 @@ export class DeliveryService {
       ...delivery,
       trackingNumber: accuratessCode || delivery.trackingNumber,
       accuratessCode,
+      accuratessShipmentId: delivery.accuratessShipmentId || null,
       externalTrackingNumber:
         delivery.order.externalTrackingNumber || accuratessCode,
       pagePublicCode,
@@ -799,21 +815,21 @@ export class DeliveryService {
     };
   }
 
-  /** رقم شحنة Accuratess الظاهر على البوليصة وتفاصيل الطلب */
+  /** رقم شحنة Accuratess الظاهر على البوليصة وتفاصيل الطلب (code فقط، ليس id) */
   private resolveAccuratessCode(
     delivery: {
       trackingNumber?: string | null;
       externalRef?: string | null;
+      accuratessShipmentId?: string | null;
     } | null,
     order: { externalTrackingNumber?: string | null },
   ): string | null {
-    const raw =
-      order.externalTrackingNumber ||
-      delivery?.trackingNumber ||
-      delivery?.externalRef ||
-      null;
-    const code = raw ? String(raw).trim() : '';
-    return code || null;
+    return resolvePrintAccuratessCode({
+      trackingNumber: delivery?.trackingNumber,
+      externalTrackingNumber: order.externalTrackingNumber,
+      accuratessShipmentId: delivery?.accuratessShipmentId,
+      externalRef: delivery?.externalRef,
+    });
   }
 
   /** Prefer a delivery row that already has Accuratess tracking for print slips. */
@@ -934,12 +950,17 @@ export class DeliveryService {
   }
 
   async syncAccuratess(user: AuthUser, id: string) {
-    const delivery = await this.prisma.delivery.findUnique({ where: { id } });
+    const delivery = await this.prisma.delivery.findUnique({
+      where: { id },
+      include: { order: { select: { externalTrackingNumber: true } } },
+    });
     if (!delivery) throw new NotFoundException('سجل التوصيل غير موجود');
     if (delivery.type !== 'EXTERNAL') {
       throw new BadRequestException('المزامنة متاحة للشحن الخارجي فقط');
     }
-    const code = delivery.trackingNumber || delivery.externalRef;
+    const code =
+      asAccuratessTrackingCode(delivery.trackingNumber) ||
+      asAccuratessTrackingCode(delivery.order.externalTrackingNumber);
     if (!code) {
       throw new BadRequestException('لا يوجد رقم شحنة Accuratess');
     }

@@ -17,7 +17,6 @@ const LOGIN_MUTATION = `
   mutation AccuratessLogin($input: LoginInput!) {
     login(input: $input) {
       token
-      expiresAt
       user { id username active }
     }
   }
@@ -106,7 +105,6 @@ async function main() {
   console.log(
     `user: id=${login.user?.id} username=${login.user?.username} active=${login.user?.active}`,
   );
-  console.log(`expiresAt: ${login.expiresAt ?? 'null (no expiry returned)'}`);
 }
 
 main().catch((err) => {

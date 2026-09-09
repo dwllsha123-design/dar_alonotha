@@ -17,6 +17,8 @@
     "purge:demo": "ts-node --transpile-only scripts/purge-demo.ts",
     "accuratess:token": "ts-node --transpile-only scripts/print-accuratess-token.ts",
     "test:accuratess": "ts-node --transpile-only scripts/test-accuratess-integration.ts",
+    "test:accuratess-webhook": "ts-node --transpile-only scripts/test-accuratess-webhook.ts",
+    "test:accuratess-mapping": "ts-node --transpile-only scripts/test-accuratess-mapping.ts",
     "test:color-media": "ts-node --transpile-only scripts/test-color-media.ts",
     "test:migration-safety": "ts-node --transpile-only scripts/test-migration-safety.ts",
     "test:persistence": "ts-node --transpile-only scripts/test-persistence-guards.ts",

@@ -10,6 +10,7 @@ type Slip = {
   externalRef?: string | null;
   externalTrackingNumber?: string | null;
   accuratessCode?: string | null;
+  accuratessShipmentId?: string | null;
   pagePublicCode?: number | null;
   pageCode?: number | null;
   fee: string | number;
@@ -42,14 +43,29 @@ type Slip = {
 };
 
 function slipAccuratessCode(s: Slip): string | null {
-  const raw =
-    s.order.externalTrackingNumber ||
-    s.externalTrackingNumber ||
-    s.trackingNumber ||
-    s.externalRef ||
-    s.accuratessCode ||
-    null;
-  return raw ? String(raw).trim() : null;
+  // Prefer Delivery.trackingNumber, then Order.externalTrackingNumber.
+  // Never use Accuratess internal shipment id (accuratessShipmentId / externalRef-as-id).
+  const candidates = [
+    s.trackingNumber,
+    s.order.externalTrackingNumber,
+    s.externalTrackingNumber,
+    s.accuratessCode,
+  ];
+  for (const raw of candidates) {
+    const code = raw ? String(raw).trim() : '';
+    if (!code) continue;
+    if (/^PAGE:/i.test(code) || /^ORD-/i.test(code) || /^SLIP-/i.test(code)) continue;
+    if (code.includes('|ORD:')) continue;
+    // Reject values that look like only an internal id when a dedicated id field exists
+    if (
+      s.accuratessShipmentId &&
+      code === String(s.accuratessShipmentId).trim()
+    ) {
+      continue;
+    }
+    return code;
+  }
+  return null;
 }
 
 export function DeliveryPrintPage() {

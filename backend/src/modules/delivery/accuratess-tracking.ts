@@ -14,10 +14,69 @@ export function isLikelyAccuratessShipmentCode(value: string | null | undefined)
   if (!value) return false;
   const s = value.trim();
   if (!s || s === 'null' || s === 'undefined') return false;
+  // Never treat our internal refs / slips as Accuratess tracking codes
+  if (/^PAGE:/i.test(s) || /^ORD-/i.test(s) || /^SLIP-/i.test(s)) return false;
+  if (s.includes('|ORD:')) return false;
   if (/^[A-Z][A-Z0-9_]*$/.test(s) && s.includes('_')) return false;
   if (/^\d{4,}$/.test(s)) return true;
   if (/^[A-Za-z0-9-]{5,}$/.test(s) && !s.includes('_')) return true;
   return false;
+}
+
+/** Persist Accuratess GraphQL shipment.id → Delivery.accuratessShipmentId */
+export function asAccuratessShipmentId(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'object') return null;
+  const s = String(value).trim();
+  if (!s || s === 'null' || s === 'undefined') return null;
+  // Never store ORD/SLIP/refNumber as the Accuratess internal id
+  if (/^PAGE:/i.test(s) || /^ORD-/i.test(s) || /^SLIP-/i.test(s) || s.includes('|ORD:')) {
+    return null;
+  }
+  return s;
+}
+
+/**
+ * Persist Accuratess GraphQL shipment.code → trackingNumber / externalTrackingNumber.
+ * Never invent values; never use refNumber / ORD / SLIP.
+ */
+export function asAccuratessTrackingCode(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'object') return null;
+  const s = String(value).trim();
+  if (!isLikelyAccuratessShipmentCode(s)) return null;
+  return s;
+}
+
+/**
+ * Customer / print-facing Accuratess number.
+ * Prefer Delivery.trackingNumber, then Order.externalTrackingNumber.
+ * Never use accuratessShipmentId (internal id) or refNumber.
+ */
+export function resolvePrintAccuratessCode(input: {
+  trackingNumber?: string | null;
+  externalTrackingNumber?: string | null;
+  accuratessShipmentId?: string | null;
+  externalRef?: string | null;
+  refNumber?: string | null;
+}): string | null {
+  const candidates = [input.trackingNumber, input.externalTrackingNumber];
+  for (const c of candidates) {
+    const code = asAccuratessTrackingCode(c);
+    if (code) return code;
+  }
+  // Legacy rows may have put the tracking code in externalRef (not the numeric id).
+  // Only accept externalRef when it is a plausible code AND not equal to accuratessShipmentId.
+  if (input.externalRef) {
+    const ref = String(input.externalRef).trim();
+    if (
+      asAccuratessTrackingCode(ref) &&
+      ref !== String(input.accuratessShipmentId || '').trim()
+    ) {
+      return ref;
+    }
+  }
+  return null;
 }
 
 /** Pull tracking code from Accuratess shipment / raw GraphQL payload. */
@@ -35,8 +94,8 @@ export function extractAccuratessTracking(
 
   const pickCode = (...candidates: unknown[]): string | null => {
     for (const c of candidates) {
-      const text = asText(c);
-      if (text && isLikelyAccuratessShipmentCode(text)) return text;
+      const code = asAccuratessTrackingCode(c);
+      if (code) return code;
     }
     return null;
   };
@@ -45,6 +104,7 @@ export function extractAccuratessTracking(
     obj: Record<string, unknown> | null | undefined,
   ): { code: string | null; trackingUrl: string | null; id: string | null } => {
     if (!obj) return { code: null, trackingUrl: null, id: null };
+    // Prefer GraphQL `code` over alternate keys; never use refNumber as tracking.
     const code = pickCode(
       obj.code,
       obj.trackingCode,
@@ -55,7 +115,7 @@ export function extractAccuratessTracking(
     return {
       code,
       trackingUrl: asText(obj.trackingUrl),
-      id: asText(obj.id),
+      id: asAccuratessShipmentId(obj.id),
     };
   };
 

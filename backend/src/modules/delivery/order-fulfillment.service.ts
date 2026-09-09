@@ -3,7 +3,11 @@ import { FulfillmentType, LocalOrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findDeliveryCity } from '../../common/delivery/delivery-zones';
 import { AccuratessService } from './accuratess.service';
-import { extractAccuratessTracking } from './accuratess-tracking';
+import {
+  asAccuratessShipmentId,
+  asAccuratessTrackingCode,
+  extractAccuratessTracking,
+} from './accuratess-tracking';
 
 @Injectable()
 export class OrderFulfillmentService {
@@ -135,6 +139,7 @@ export class OrderFulfillmentService {
     let externalResult: Record<string, unknown> = {};
     let tracking: string | null = null;
     let labelUrl: string | null = null;
+    let accuratessShipmentId: string | null = null;
     let payloadJson: string | null = null;
     let fulfillmentError: string | null = null;
 
@@ -190,16 +195,17 @@ export class OrderFulfillmentService {
             shipped.shipment as never,
             (shipped as { raw?: unknown }).raw ?? shipped,
           );
-          tracking = extracted.code;
+          tracking = asAccuratessTrackingCode(extracted.code);
           labelUrl = extracted.trackingUrl;
+          accuratessShipmentId = asAccuratessShipmentId(extracted.id);
           if (!tracking) {
             fulfillmentError = 'Accuratess نجح لكن بدون رقم شحنة في الرد';
             this.logger.error(
-              `Accuratess empty tracking for ${order.orderNumber}: ${payloadJson}`,
+              `Accuratess empty tracking for ${order.orderNumber}: shipmentId=${accuratessShipmentId ?? '—'} payload=${payloadJson}`,
             );
           } else {
             this.logger.log(
-              `Accuratess OK ${order.orderNumber} tracking=${tracking} pageCode=${pagePublicCode ?? '—'}`,
+              `Accuratess OK ${order.orderNumber} code=${tracking} shipmentId=${accuratessShipmentId ?? '—'} pageCode=${pagePublicCode ?? '—'}`,
             );
           }
         } else if ('error' in shipped && shipped.error) {
@@ -207,11 +213,12 @@ export class OrderFulfillmentService {
             null,
             (shipped as { raw?: unknown }).raw ?? shipped,
           );
-          if (extracted.code) {
-            tracking = extracted.code;
-            labelUrl = extracted.trackingUrl;
+          tracking = asAccuratessTrackingCode(extracted.code);
+          labelUrl = extracted.trackingUrl;
+          accuratessShipmentId = asAccuratessShipmentId(extracted.id);
+          if (tracking) {
             this.logger.warn(
-              `Accuratess reported error but recovered code=${tracking} for ${order.orderNumber}`,
+              `Accuratess reported error but recovered code=${tracking} shipmentId=${accuratessShipmentId ?? '—'} for ${order.orderNumber}`,
             );
           } else {
             fulfillmentError = String(shipped.error);
@@ -230,7 +237,9 @@ export class OrderFulfillmentService {
       }
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    let updated;
+    try {
+      updated = await this.prisma.$transaction(async (tx) => {
       const orderRow = await tx.order.update({
         where: { id: orderId },
         data: {
@@ -267,6 +276,7 @@ export class OrderFulfillmentService {
             `Accuratess page=${senderName}`,
             pagePublicCode != null ? `pageCode=${pagePublicCode}` : '',
             tracking ? `code=${tracking}` : '',
+            accuratessShipmentId ? `shipmentId=${accuratessShipmentId}` : '',
           ]
             .filter(Boolean)
             .join(' | ');
@@ -287,6 +297,7 @@ export class OrderFulfillmentService {
             trackingNumber: tracking || undefined,
             trackingUrl: labelUrl || undefined,
             externalRef: tracking || undefined,
+            accuratessShipmentId: accuratessShipmentId || undefined,
             notes: deliveryNotes,
           },
         });
@@ -301,8 +312,13 @@ export class OrderFulfillmentService {
                   trackingNumber: tracking,
                   trackingUrl: labelUrl || existing.trackingUrl,
                   externalRef: tracking,
+                  ...(accuratessShipmentId
+                    ? { accuratessShipmentId }
+                    : {}),
                 }
-              : {}),
+              : accuratessShipmentId
+                ? { accuratessShipmentId }
+                : {}),
             notes: deliveryNotes,
           },
         });
@@ -310,12 +326,20 @@ export class OrderFulfillmentService {
 
       return orderRow;
     });
+    } catch (dbErr) {
+      // Accuratess may already have created the shipment — never silently retry saveShipment.
+      this.logger.error(
+        `DB persist failed after Accuratess create order=${order.orderNumber} shipmentId=${accuratessShipmentId ?? '—'} code=${tracking ?? '—'} ref=${this.accuratess.buildRefNumber(order.orderNumber, senderName, pagePublicCode)} err=${dbErr instanceof Error ? dbErr.message : String(dbErr)}`,
+      );
+      throw dbErr;
+    }
 
     return {
       fulfillmentType: 'EXTERNAL' as const,
       order: updated,
       externalTrackingNumber: updated.externalTrackingNumber,
       accuratessCode: updated.externalTrackingNumber,
+      accuratessShipmentId,
       pagePublicCode: updated.pagePublicCode,
       accountUsed: account
         ? { id: account.id, label: account.label, pageIdentifier: account.pageIdentifier }

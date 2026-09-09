@@ -849,12 +849,25 @@ model Delivery {
   companyId         String?
   trackingNumber    String?
   shippingSlipNo    String?        @unique
-  /// Accuratess shipment id / code
+  /// Accuratess shipment code (human tracking) — not ORD-/SLIP-
   externalRef       String?
+  /// Accuratess GraphQL / webhook shipmentId (numeric id) — separate from code, ORD-, SLIP-
+  accuratessShipmentId String?
   trackingUrl       String?
   lastSyncedAt      DateTime?
   fee               Decimal        @default(0)
   notes             String?
+  /// Latest Accuratess webhook snapshot (delivery/shipment fields only)
+  accuratessShipmentStatusCode   String?
+  accuratessReturnTypeCode       String?
+  accuratessDeliveryTypeCode     String?
+  accuratessDeliveredAmount      Decimal?
+  accuratessCollectedFees        Decimal?
+  accuratessDeliveryDate         DateTime?
+  accuratessCancellationReasonId String?
+  accuratessWebhookNotes         String?
+  accuratessLastWebhookAt        DateTime?
+  accuratessLastEventFingerprint String?
   assignedAt        DateTime?
   pickedUpAt        DateTime?
   deliveredAt       DateTime?
@@ -868,7 +881,26 @@ model Delivery {
   @@index([status])
   @@index([orderId])
   @@index([externalRef])
+  @@index([accuratessShipmentId])
   @@map("deliveries")
+}
+
+/// Idempotent Accuratess inbound webhook audit (no secrets)
+model AccuratessWebhookEvent {
+  id          String   @id @default(cuid())
+  shipmentId  String
+  typeCode    String?
+  fingerprint String   @unique
+  payloadJson String
+  status      String
+  deliveryId  String?
+  orderId     String?
+  message     String?
+  createdAt   DateTime @default(now())
+
+  @@index([shipmentId])
+  @@index([createdAt])
+  @@map("accuratess_webhook_events")
 }
 
 // ─── Invoices ────────────────────────────────────────────

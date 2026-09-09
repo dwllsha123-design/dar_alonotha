@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeliveryStatus } from '@prisma/client';
 import {
+  asAccuratessShipmentId,
+  asAccuratessTrackingCode,
   extractAccuratessTracking,
   type AccuratessShipmentResult,
 } from './accuratess-tracking';
@@ -53,7 +55,6 @@ const LOGIN_MUTATION = `
   mutation AccuratessLogin($input: LoginInput!) {
     login(input: $input) {
       token
-      expiresAt
       user {
         id
         username
@@ -256,6 +257,7 @@ export class AccuratessService {
     const expiresRaw = json.data?.login?.expiresAt;
     this.cachedToken = {
       token,
+      // expiresAt is no longer requested from Accuratess GraphQL (schema mismatch).
       expiresAt: expiresRaw ? new Date(expiresRaw).getTime() : null,
     };
 
@@ -695,8 +697,8 @@ export class AccuratessService {
           return {
             ok: true,
             shipment: {
-              id: extracted.id || existing.id,
-              code: extracted.code,
+              id: asAccuratessShipmentId(extracted.id || existing.id),
+              code: asAccuratessTrackingCode(extracted.code),
               trackingUrl: extracted.trackingUrl || existing.trackingUrl || undefined,
               refNumber: existing.refNumber || refNumber,
             },
@@ -800,9 +802,10 @@ export class AccuratessService {
             return {
               ok: true,
               shipment: {
-                id: fromRef.id || recovered.id,
-                code: fromRef.code,
+                id: asAccuratessShipmentId(fromRef.id || recovered.id),
+                code: asAccuratessTrackingCode(fromRef.code),
                 trackingUrl: fromRef.trackingUrl || recovered.trackingUrl || undefined,
+                refNumber,
               },
               raw: json,
               input,
@@ -854,14 +857,25 @@ export class AccuratessService {
       }
 
       const normalized = {
-        id: extracted.id || shipment?.id,
-        code: extracted.code,
+        id: asAccuratessShipmentId(extracted.id ?? shipment?.id),
+        code: asAccuratessTrackingCode(extracted.code),
         trackingUrl: extracted.trackingUrl || shipment?.trackingUrl || undefined,
-        refNumber: shipment?.refNumber,
+        refNumber: shipment?.refNumber ? String(shipment.refNumber) : undefined,
       };
 
+      if (!normalized.code) {
+        return {
+          ok: false,
+          error: 'Accuratess لم يُرجع رقم شحنة (code)',
+          raw: json,
+          input,
+          shipmentId: normalized.id,
+          refNumber,
+        };
+      }
+
       this.logger.log(
-        `Accuratess shipment created code=${normalized.code} order=${payload.orderNumber}`,
+        `Accuratess shipment created id=${normalized.id ?? '—'} code=${normalized.code} order=${payload.orderNumber} ref=${refNumber}`,
       );
       return { ok: true, shipment: normalized, raw: json, input };
     } catch (err) {
