@@ -163,34 +163,24 @@ export function DeliveryPrintPage() {
       </div>
       {slips.map((s) => {
         const code = slipAccuratessCode(s);
-        const trackUrl = s.trackingUrl || s.order.shippingLabelUrl || null;
+        const isExternal =
+          s.type === 'EXTERNAL' || Boolean(code) || Boolean(s.order.externalTrackingNumber);
         return (
           <section className="slip" key={s.id}>
             <h1>بوليصة شحن — دار الأنوثة</h1>
             <div>رقم البوليصة: {s.shippingSlipNo || '—'}</div>
             <div>رقم الطلب: {s.order.orderNumber}</div>
 
-            <div className="accuratess-banner">
-              <div className="label">رقم شحنة Accuratess / المعيار</div>
-              {code ? (
-                <div className="code">{code}</div>
-              ) : (
-                <div className="missing">لا يوجد رقم شحنة بعد</div>
-              )}
-              <div style={{ marginTop: 8, fontSize: 14, fontWeight: 700 }}>
-                رمز الصفحة:{' '}
-                {s.pagePublicCode ??
-                  s.pageCode ??
-                  s.order.facebookPage?.publicCode ??
-                  s.order.pagePublicCode ??
-                  '—'}
+            {isExternal ? (
+              <div className="accuratess-banner">
+                <div className="label">Accuratess / المعيار</div>
+                {code ? (
+                  <div className="code">{code}</div>
+                ) : (
+                  <div className="missing">لا يوجد رقم شحنة بعد</div>
+                )}
               </div>
-              {trackUrl ? (
-                <div style={{ marginTop: 8, fontSize: 12 }}>
-                  رابط التتبع: {trackUrl}
-                </div>
-              ) : null}
-            </div>
+            ) : null}
 
             <div className="parties">
               <div className="party">
@@ -217,16 +207,23 @@ export function DeliveryPrintPage() {
               </div>
             </div>
             <div className="meta">
-              <div>
-                <strong>رقم Accuratess:</strong> {code || '—'}
-              </div>
+              {isExternal ? (
+                <div>
+                  <strong>رقم Accuratess:</strong> {code || '—'}
+                </div>
+              ) : (
+                <div>
+                  <strong>المندوب:</strong>{' '}
+                  {s.agent?.name || '—'}
+                </div>
+              )}
               <div>التحصيل: {money(s.order.totalAmount)}</div>
               <div>رسوم التوصيل: {money(s.fee)}</div>
               <div>
                 المندوب/الشركة:{' '}
                 {s.agent?.name ||
                   s.company?.nameAr ||
-                  (s.type === 'EXTERNAL' ? 'Accuratess' : '—')}
+                  (isExternal ? 'Accuratess' : '—')}
               </div>
             </div>
             <table>
