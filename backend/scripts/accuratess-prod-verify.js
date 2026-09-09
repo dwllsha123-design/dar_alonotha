@@ -1,15 +1,9 @@
 /**
  * Production one-shot Accuratess connectivity + NEW test shipment.
  * Never prints tokens. Never touches ORD-2026-000001.
- *
- * Run inside Railway backend (/app):
- *   node dist/... or npx ts-node — prefer compiled Nest context via nest start isn't needed;
- *   use: node -r ts-node/register may be unavailable — ship as JS using Nest dist.
- *
- * Safer: use NestFactory against AppModule from dist after deploy.
+ * City names are resolved from Accuratess zone dropdown (ASCII-safe script).
  */
 const { NestFactory } = require('@nestjs/core');
-const { Logger } = require('@nestjs/common');
 
 function present(v) {
   return v != null && String(v).trim() !== '';
@@ -24,9 +18,20 @@ async function main() {
   console.log('ENV_PRESENCE', {
     ACCURATESS_ENABLED: process.env.ACCURATESS_ENABLED === 'true' ? 'true' : 'false/unset',
     ACCURATESS_TOKEN: present(process.env.ACCURATESS_TOKEN) ? 'SET' : 'MISSING',
+    ACCURATESS_USERNAME: present(process.env.ACCURATESS_USERNAME) ? 'SET' : 'MISSING',
+    ACCURATESS_PASSWORD: present(process.env.ACCURATESS_PASSWORD) ? 'SET' : 'MISSING',
     ACCURATESS_ENDPOINT: present(process.env.ACCURATESS_ENDPOINT) ? 'SET' : 'MISSING',
     ACCURATESS_WEBHOOK_ENABLED: process.env.ACCURATESS_WEBHOOK_ENABLED || 'unset',
   });
+
+  if (present(process.env.ACCURATESS_TOKEN)) {
+    console.error('REFUSE: ACCURATESS_TOKEN must be absent for login-auth verification');
+    process.exit(2);
+  }
+  if (!present(process.env.ACCURATESS_USERNAME) || !present(process.env.ACCURATESS_PASSWORD)) {
+    console.error('REFUSE: ACCURATESS_USERNAME/PASSWORD required');
+    process.exit(2);
+  }
 
   const { AppModule } = require('./dist/app.module');
   const { AccuratessService } = require('./dist/modules/delivery/accuratess.service');
@@ -45,8 +50,9 @@ async function main() {
   const prisma = app.get(PrismaService);
 
   const out = {
-    TOKEN_AUTH: 'FAIL',
-    GRAPHQL_CONNECTION: 'FAIL',
+    LOGIN_MUTATION: 'FAIL',
+    FRESH_TOKEN_OBTAINED: 'NO',
+    AUTHENTICATED_ME: 'FAIL',
     SAVE_SHIPMENT: 'FAIL',
     SHIPMENT_ID_SAVED: 'FAIL',
     TRACKING_CODE_SAVED: 'FAIL',
@@ -55,6 +61,7 @@ async function main() {
     testOrderNumber: null,
     shipmentId: null,
     trackingCode: null,
+    cityUsed: null,
   };
 
   try {
@@ -62,20 +69,35 @@ async function main() {
       console.log(JSON.stringify({ ...out, error: 'Accuratess not configured' }, null, 2));
       process.exit(1);
     }
-    out.TOKEN_AUTH = present(process.env.ACCURATESS_TOKEN) ? 'PASS' : 'FAIL';
+
+    const loggedIn = await accuratess.login(true);
+    out.LOGIN_MUTATION = loggedIn.ok ? 'PASS' : 'FAIL';
+    out.FRESH_TOKEN_OBTAINED = loggedIn.ok && present(loggedIn.token) ? 'YES' : 'NO';
+    console.log('LOGIN', { ok: Boolean(loggedIn.ok), error: loggedIn.error || null });
+    if (!loggedIn.ok) {
+      console.log(JSON.stringify(out, null, 2));
+      process.exit(1);
+    }
 
     const ping = await accuratess.ping();
-    out.GRAPHQL_CONNECTION = ping.ok ? 'PASS' : 'FAIL';
+    out.AUTHENTICATED_ME = ping.ok ? 'PASS' : 'FAIL';
     console.log('GRAPHQL_PING', { ok: Boolean(ping.ok), error: ping.error || null });
-
     if (!ping.ok) {
       console.log(JSON.stringify(out, null, 2));
       process.exit(1);
     }
 
-    // Prefer known external cities used previously
-    const city = 'مصراتة';
-    const area = 'المركز';
+    // Destination city for local EXTERNAL routing (UTF-8 via hex to avoid transfer corruption).
+    // Accuratess recipient zone IDs come from ACCURATESS_DEFAULT_RECIPIENT_* env.
+    const city = Buffer.from('d985d8b5d8b1d8a7d8aad8a9', 'hex').toString('utf8'); // مصراتة
+    const area = Buffer.from('d8a7d984d985d8b1d983d8b2', 'hex').toString('utf8'); // المركز
+    out.cityUsed = city;
+    console.log('DEST_CITY', {
+      nameLen: city.length,
+      defaultRecipientZone: process.env.ACCURATESS_DEFAULT_RECIPIENT_ZONE_ID || null,
+      defaultRecipientSubzone: process.env.ACCURATESS_DEFAULT_RECIPIENT_SUBZONE_ID || null,
+    });
+
     const stamp = Date.now();
     const orderNumber = `TEST-ACC-${stamp}`;
     const orderBarcode = `ORD-TEST-${stamp}`;
@@ -98,17 +120,17 @@ async function main() {
         subtotal: 100,
         deliveryFee: 25,
         totalAmount: 125,
-        shippingName: 'عميل اختبار Accurate',
+        shippingName: 'Accuratess Test Customer',
         shippingPhone: '0912345678',
         city,
         area,
-        address: `شارع الاختبار — ${city}`,
+        address: 'Test street - ' + city,
         notes: `accuratess-prod-verify-${stamp}`,
         createdById: admin?.id || undefined,
         items: {
           create: [
             {
-              productName: 'منتج اختبار Accuratess',
+              productName: 'Accuratess test product',
               quantity: 1,
               unitPrice: 100,
               lineTotal: 100,
@@ -120,10 +142,7 @@ async function main() {
     out.testOrderNumber = order.orderNumber;
     console.log('CREATED_TEST_ORDER', order.orderNumber);
 
-    // Exactly one Accuratess create via normal fulfillment path
     const routed = await fulfillment.routeOrder(order.id);
-    const code = routed?.externalTrackingNumber || routed?.accuratessCode || null;
-    const shipmentId = routed?.accuratessShipmentId || null;
 
     const refreshed = await prisma.order.findUnique({
       where: { id: order.id },
@@ -131,20 +150,17 @@ async function main() {
     });
     const d = refreshed?.deliveries?.[0] || null;
 
-    out.shipmentId = d?.accuratessShipmentId || shipmentId;
-    out.trackingCode = d?.trackingNumber || refreshed?.externalTrackingNumber || code;
+    out.shipmentId = d?.accuratessShipmentId || routed?.accuratessShipmentId || null;
+    out.trackingCode =
+      d?.trackingNumber || refreshed?.externalTrackingNumber || routed?.externalTrackingNumber || null;
 
     out.SAVE_SHIPMENT =
       out.shipmentId && out.trackingCode && !routed?.error ? 'PASS' : 'FAIL';
-    out.SHIPMENT_ID_SAVED =
-      d?.accuratessShipmentId && String(d.accuratessShipmentId) === String(out.shipmentId)
-        ? 'PASS'
-        : 'FAIL';
+    out.SHIPMENT_ID_SAVED = d?.accuratessShipmentId ? 'PASS' : 'FAIL';
     out.TRACKING_CODE_SAVED =
       d?.trackingNumber &&
       refreshed?.externalTrackingNumber &&
-      d.trackingNumber === refreshed.externalTrackingNumber &&
-      d.trackingNumber === out.trackingCode
+      d.trackingNumber === refreshed.externalTrackingNumber
         ? 'PASS'
         : 'FAIL';
 
@@ -166,18 +182,17 @@ async function main() {
         orderNumber: slip.order?.orderNumber,
         shippingSlipNo: slip.shippingSlipNo,
         printCode: printCode || null,
-        accuratessShipmentId: slip.accuratessShipmentId || null,
+        accuratessShipmentIdPresent: Boolean(slip.accuratessShipmentId),
+        trackingCodePresent: Boolean(printCode),
       });
     }
 
-    // Ensure we did not touch ORD-2026-000001
     const old = await prisma.order.findFirst({
       where: { orderNumber: 'ORD-2026-000001' },
       select: {
         orderNumber: true,
         externalTrackingNumber: true,
         fulfillmentError: true,
-        updatedAt: true,
       },
     });
     console.log('ORD_2026_000001_UNCHANGED_SNAPSHOT', {

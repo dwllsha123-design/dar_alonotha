@@ -43,7 +43,10 @@ type AccuratessZone = { id: number; name: string };
 
 export type AccuratessGqlResult<T> = {
   data?: T;
-  errors?: Array<{ message: string; extensions?: { code?: string } }>;
+  errors?: Array<{
+    message: string;
+    extensions?: { code?: string; category?: string };
+  }>;
 };
 
 type CachedToken = {
@@ -261,15 +264,7 @@ export class AccuratessService {
       expiresAt: expiresRaw ? new Date(expiresRaw).getTime() : null,
     };
 
-    this.logger.log(
-      `Accuratess login ok (user=${json.data?.login?.user?.username ?? username})`,
-    );
-    // Opt-in: ACCURATESS_PRINT_TOKEN=true prints the full token for UI paste
-    if (this.config.get<string>('ACCURATESS_PRINT_TOKEN') === 'true') {
-      this.logger.warn(
-        `ACCURATESS_TOKEN (copy into UI settings):\n${token}`,
-      );
-    }
+    this.logger.log('Accuratess login ok');
     return token;
   }
 
@@ -297,29 +292,43 @@ export class AccuratessService {
     if (!errors?.length) return false;
     return errors.some((e) => {
       const code = (e.extensions?.code || '').toUpperCase();
+      const category = String(e.extensions?.category || '').toLowerCase();
       const msg = (e.message || '').toLowerCase();
       return (
         code.includes('UNAUTHENTICAT') ||
         code.includes('UNAUTHORIZED') ||
         code.includes('FORBIDDEN') ||
+        category === 'authentication' ||
+        msg === 'authentication' ||
         msg.includes('unauthenticated') ||
         msg.includes('unauthorized') ||
-        msg.includes('token') ||
         msg.includes('غير مصرح') ||
         msg.includes('تسجيل الدخول')
       );
     });
   }
 
+  private canRelogin(account?: AccuratessAccountCreds | null) {
+    return !account?.apiToken && !this.staticToken() && this.hasLoginCredentials();
+  }
+
+  private invalidateCachedToken() {
+    this.cachedToken = null;
+  }
+
   /**
    * Reusable GraphQL request helper for subsequent Accuratess API calls.
-   * Attaches Authorization and retries once after re-login on auth failure
-   * (only when using username/password, not a static/account token).
+   * Attaches Authorization and optionally retries once after re-login on auth
+   * failure (username/password mode only — never with a static/account token).
+   *
+   * Mutating callers that may already have created remote state (saveShipment)
+   * must pass allowAuthRetry:false and handle idempotent recovery themselves.
    */
   async request<T>(
     query: string,
     variables?: Record<string, unknown>,
     account?: AccuratessAccountCreds | null,
+    options?: { allowAuthRetry?: boolean },
   ): Promise<AccuratessGqlResult<T>> {
     if (!this.isConfigured(account)) {
       return {
@@ -332,14 +341,13 @@ export class AccuratessService {
       };
     }
 
-    const canRelogin =
-      !account?.apiToken && !this.staticToken() && this.hasLoginCredentials();
-
+    const allowAuthRetry = options?.allowAuthRetry !== false;
+    const canRelogin = this.canRelogin(account);
     const operation = this.gqlOperationName(query);
 
     const run = async (forceRelogin: boolean) => {
       if (forceRelogin && canRelogin) {
-        this.cachedToken = null;
+        this.invalidateCachedToken();
         await this.login(true);
       }
       const token = await this.resolveToken(account);
@@ -352,7 +360,40 @@ export class AccuratessService {
         },
         body: JSON.stringify({ query, variables }),
       });
-      const json = (await res.json()) as AccuratessGqlResult<T>;
+
+      let json: AccuratessGqlResult<T>;
+      try {
+        json = (await res.json()) as AccuratessGqlResult<T>;
+      } catch {
+        return {
+          json: {
+            errors: [
+              {
+                message: `Accuratess HTTP ${res.status}: non-JSON response`,
+              },
+            ],
+          } as AccuratessGqlResult<T>,
+          status: res.status,
+        };
+      }
+
+      // Carrier sometimes returns HTTP 401/403 with a non-GraphQL body.
+      if (
+        (res.status === 401 || res.status === 403) &&
+        !json.errors?.length
+      ) {
+        json = {
+          ...json,
+          errors: [
+            ...(json.errors || []),
+            {
+              message: 'authentication',
+              extensions: { code: 'UNAUTHENTICATED', category: 'authentication' },
+            },
+          ],
+        };
+      }
+
       if (this.debugEnabled()) {
         const dataKeys = json.data ? Object.keys(json.data).join(',') : 'none';
         this.logger.debug(
@@ -376,14 +417,18 @@ export class AccuratessService {
           );
         }
       }
-      return json;
+      return { json, status: res.status };
     };
 
     try {
-      let json = await run(false);
-      if (canRelogin && this.looksLikeAuthError(json.errors)) {
+      let { json } = await run(false);
+      if (
+        allowAuthRetry &&
+        canRelogin &&
+        this.looksLikeAuthError(json.errors)
+      ) {
         this.logger.warn('Accuratess auth error — re-login and retry once');
-        json = await run(true);
+        ({ json } = await run(true));
       }
       return json;
     } catch (err) {
@@ -397,8 +442,9 @@ export class AccuratessService {
     query: string,
     variables?: Record<string, unknown>,
     account?: AccuratessAccountCreds | null,
+    options?: { allowAuthRetry?: boolean },
   ): Promise<AccuratessGqlResult<T>> {
-    return this.request<T>(query, variables, account);
+    return this.request<T>(query, variables, account, options);
   }
 
   /** Lightweight connectivity check (me query). */
@@ -795,9 +841,50 @@ export class AccuratessService {
 
       const json = await this.gql<{
         saveShipment?: AccuratessShipmentResult | null;
-      }>(query, { input }, payload.account);
+      }>(query, { input }, payload.account, { allowAuthRetry: false });
 
-      if (json.errors?.length) {
+      // Auth retry must not blindly re-mutate: re-login, recover by ref, then retry once.
+      let effective = json;
+      if (
+        this.canRelogin(payload.account) &&
+        this.looksLikeAuthError(json.errors)
+      ) {
+        this.logger.warn(
+          'Accuratess saveShipment auth error — re-login, idempotent check, then retry once',
+        );
+        this.invalidateCachedToken();
+        const relogin = await this.login(true);
+        if (!relogin.ok) {
+          return { ok: false, error: relogin.error || 'Accuratess re-login failed', raw: json, input };
+        }
+        const recoveredAfterAuth = await this.findShipmentByRef(
+          refNumber,
+          payload.account,
+        );
+        if (recoveredAfterAuth) {
+          const fromRef = extractAccuratessTracking(recoveredAfterAuth);
+          if (fromRef.code) {
+            return {
+              ok: true,
+              shipment: {
+                id: asAccuratessShipmentId(fromRef.id || recoveredAfterAuth.id),
+                code: asAccuratessTrackingCode(fromRef.code),
+                trackingUrl:
+                  fromRef.trackingUrl || recoveredAfterAuth.trackingUrl || undefined,
+                refNumber,
+              },
+              raw: json,
+              input,
+              idempotent: true,
+            };
+          }
+        }
+        effective = await this.gql<{
+          saveShipment?: AccuratessShipmentResult | null;
+        }>(query, { input }, payload.account, { allowAuthRetry: false });
+      }
+
+      if (effective.errors?.length) {
         const recovered = await this.findShipmentByRef(refNumber, payload.account);
         if (recovered) {
           const fromRef = extractAccuratessTracking(recovered);
@@ -813,14 +900,14 @@ export class AccuratessService {
                 trackingUrl: fromRef.trackingUrl || recovered.trackingUrl || undefined,
                 refNumber,
               },
-              raw: json,
+              raw: effective,
               input,
-              warnings: json.errors.map((e) => e.message),
+              warnings: effective.errors.map((e) => e.message),
             };
           }
         }
 
-        const msg = json.errors
+        const msg = effective.errors
           .map((e) => {
             const validation = (
               e as { extensions?: { validation?: Record<string, string[]> } }
@@ -835,16 +922,16 @@ export class AccuratessService {
           })
           .join('; ');
         this.logger.error(`Accuratess saveShipment failed: ${msg}`);
-        return { ok: false, error: msg, raw: json, input };
+        return { ok: false, error: msg, raw: effective, input };
       }
 
-      const shipment = json.data?.saveShipment || null;
-      let extracted = extractAccuratessTracking(shipment, json);
+      const shipment = effective.data?.saveShipment || null;
+      let extracted = extractAccuratessTracking(shipment, effective);
 
       if (!extracted.code) {
         const recovered = await this.findShipmentByRef(refNumber, payload.account);
         if (recovered) {
-          extracted = extractAccuratessTracking(recovered, json);
+          extracted = extractAccuratessTracking(recovered, effective);
           if (extracted.code) {
             this.logger.warn(
               `Accuratess saveShipment empty response — recovered code=${extracted.code} via refNumber`,
@@ -857,7 +944,7 @@ export class AccuratessService {
         return {
           ok: false,
           error: 'Accuratess لم يُرجع رقم شحنة (code)',
-          raw: json,
+          raw: effective,
           input,
         };
       }
@@ -873,7 +960,7 @@ export class AccuratessService {
         return {
           ok: false,
           error: 'Accuratess لم يُرجع رقم شحنة (code)',
-          raw: json,
+          raw: effective,
           input,
           shipmentId: normalized.id,
           refNumber,
@@ -883,7 +970,7 @@ export class AccuratessService {
       this.logger.log(
         `Accuratess shipment created id=${normalized.id ?? '—'} code=${normalized.code} order=${payload.orderNumber} ref=${refNumber}`,
       );
-      return { ok: true, shipment: normalized, raw: json, input };
+      return { ok: true, shipment: normalized, raw: effective, input };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Accuratess network error';
       this.logger.error(message);
