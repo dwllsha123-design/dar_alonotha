@@ -207,24 +207,18 @@ export function DeliveryPrintPage() {
               </div>
             </div>
             <div className="meta">
-              {isExternal ? (
+              {!isExternal ? (
                 <div>
-                  <strong>رقم Accuratess:</strong> {code || '—'}
+                  <strong>المندوب:</strong> {s.agent?.name || '—'}
                 </div>
-              ) : (
-                <div>
-                  <strong>المندوب:</strong>{' '}
-                  {s.agent?.name || '—'}
-                </div>
-              )}
+              ) : null}
               <div>التحصيل: {money(s.order.totalAmount)}</div>
               <div>رسوم التوصيل: {money(s.fee)}</div>
-              <div>
-                المندوب/الشركة:{' '}
-                {s.agent?.name ||
-                  s.company?.nameAr ||
-                  (isExternal ? 'Accuratess' : '—')}
-              </div>
+              {!isExternal ? (
+                <div>
+                  المندوب/الشركة: {s.agent?.name || s.company?.nameAr || '—'}
+                </div>
+              ) : null}
             </div>
             <table>
               <thead>
