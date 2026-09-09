@@ -44,13 +44,29 @@ type Order = {
   }>;
 };
 
+type Courier = { id: string; name: string; phone?: string | null; isActive: boolean };
+type Page = { id: string; name: string; publicCode: number };
+
 function orderAccuratessCode(o: Order): string | null {
   const d = o.deliveries?.[0];
   const raw = d?.trackingNumber || d?.externalRef || o.externalTrackingNumber;
   return raw ? String(raw).trim() : null;
 }
 
-type Page = { id: string; name: string; publicCode: number };
+function isExternalOrder(o: Order) {
+  if (o.fulfillmentType === 'EXTERNAL' || o.deliveryType === 'EXTERNAL') return true;
+  if (o.fulfillmentType === 'INTERNAL' || o.deliveryType === 'INTERNAL') return false;
+  const city = (o.city || '').replace(/\s+/g, '');
+  return Boolean(city) && !city.includes('طرابلس');
+}
+
+function canPrintWaybill(o: Order) {
+  if (o.courierId || o.courier) return true;
+  const d = o.deliveries?.[0];
+  if (d?.shippingSlipNo || d?.trackingNumber || d?.externalRef) return true;
+  if (o.externalTrackingNumber) return true;
+  return false;
+}
 
 const STATUS_TABS = [
   { value: '', label: 'الكل' },
@@ -67,29 +83,86 @@ export function OrdersPage() {
   const focusId = searchParams.get('focus') || '';
   const [orders, setOrders] = useState<Order[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
+  const [couriers, setCouriers] = useState<Courier[]>([]);
   const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
   const [status, setStatus] = useState('');
   const [source, setSource] = useState('');
   const [facebookPageId, setFacebookPageId] = useState('');
   const [q, setQ] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [selectedCourierId, setSelectedCourierId] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    api<Page[]>('/facebook-pages')
-      .then(setPages)
-      .catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
+  async function refreshOrders() {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (source) params.set('source', source);
     if (facebookPageId) params.set('facebookPageId', facebookPageId);
     const qs = params.toString();
-    api<Order[]>(`/orders${qs ? `?${qs}` : ''}`)
-      .then(setOrders)
-      .catch((e) => setError(e.message));
+    const list = await api<Order[]>(`/orders${qs ? `?${qs}` : ''}`);
+    setOrders(list);
+    return list;
+  }
+
+  useEffect(() => {
+    api<Page[]>('/facebook-pages')
+      .then(setPages)
+      .catch(() => undefined);
+    api<Courier[]>('/couriers')
+      .then(setCouriers)
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refreshOrders().catch((e) => setError(e.message));
   }, [status, source, facebookPageId]);
+
+  const activeCouriers = useMemo(
+    () => couriers.filter((c) => c.isActive),
+    [couriers],
+  );
+
+  function startAssign(orderId: string) {
+    setError('');
+    setMsg('');
+    setAssigningId(orderId);
+    setSelectedCourierId('');
+  }
+
+  function cancelAssign() {
+    setAssigningId(null);
+    setSelectedCourierId('');
+  }
+
+  async function confirmAssign(o: Order) {
+    setError('');
+    setMsg('');
+    setBusyId(o.id);
+    try {
+      if (isExternalOrder(o)) {
+        await api(`/orders/${o.id}/fulfill`, { method: 'POST', body: '{}' });
+        setMsg(`تم إرسال الطلب ${o.orderNumber} لشركة التوصيل`);
+      } else {
+        if (!selectedCourierId) {
+          setError('اختاري مندوباً أولاً');
+          return;
+        }
+        await api(`/orders/${o.id}/assign-courier`, {
+          method: 'POST',
+          body: JSON.stringify({ courierId: selectedCourierId }),
+        });
+        setMsg(`تم تعيين المندوب للطلب ${o.orderNumber}`);
+      }
+      cancelAssign();
+      await refreshOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل التعيين');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   useEffect(() => {
     if (!focusId) return;
@@ -141,6 +214,11 @@ export function OrdersPage() {
       </div>
 
       {error ? <div className="error">{error}</div> : null}
+      {msg ? (
+        <div className="panel" style={{ padding: '10px 14px', color: 'var(--primary-container)' }}>
+          {msg}
+        </div>
+      ) : null}
 
       <div className="stats">
         <div className="stat">
@@ -302,18 +380,84 @@ export function OrdersPage() {
                         {new Date(o.createdAt).toLocaleString('ar-LY')}
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        <Link
-                          className="btn secondary"
-                          to={`/delivery/print?orderIds=${o.id}`}
-                          target="_blank"
-                        >
-                          طباعة
-                        </Link>
+                        {canPrintWaybill(o) ? (
+                          <Link
+                            className="btn secondary sm"
+                            to={`/delivery/print?orderIds=${o.id}`}
+                            target="_blank"
+                          >
+                            طباعة البوليصة
+                          </Link>
+                        ) : assigningId === o.id ? (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: 6,
+                              minWidth: 180,
+                            }}
+                          >
+                            {!isExternalOrder(o) ? (
+                              <select
+                                value={selectedCourierId}
+                                onChange={(e) => setSelectedCourierId(e.target.value)}
+                                style={{ height: 32, padding: '0 8px' }}
+                                disabled={busyId === o.id}
+                              >
+                                <option value="">اختر المندوب</option>
+                                {activeCouriers.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                    {c.phone ? ` — ${c.phone}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="muted" style={{ fontSize: 12 }}>
+                                خارج طرابلس → Accuratess
+                              </span>
+                            )}
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <button
+                                type="button"
+                                className="btn sm"
+                                disabled={
+                                  busyId === o.id ||
+                                  (!isExternalOrder(o) && !selectedCourierId)
+                                }
+                                onClick={() => confirmAssign(o)}
+                              >
+                                {busyId === o.id ? 'جاري…' : 'تأكيد'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn secondary sm"
+                                disabled={busyId === o.id}
+                                onClick={cancelAssign}
+                              >
+                                إلغاء
+                              </button>
+                            </div>
+                            {!isExternalOrder(o) && !activeCouriers.length ? (
+                              <span className="muted" style={{ fontSize: 12 }}>
+                                لا يوجد مندوبون نشطون — أضيفي من صفحة التوصيل
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn sm"
+                            onClick={() => startAssign(o.id)}
+                          >
+                            تعيين مندوب
+                          </button>
+                        )}
                       </td>
                     </tr>
                     {open ? (
                       <tr>
-                        <td colSpan={8} style={{ background: 'var(--surface-container-low)' }}>
+                        <td colSpan={9} style={{ background: 'var(--surface-container-low)' }}>
                           <div style={{ padding: '12px 8px' }}>
                             <strong style={{ display: 'block', marginBottom: 10 }}>
                               تجهيز الطلب — {items.length} منتج
@@ -397,7 +541,7 @@ export function OrdersPage() {
               })}
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={8} className="empty">
+                  <td colSpan={9} className="empty">
                     لا توجد طلبات مطابقة
                   </td>
                 </tr>
