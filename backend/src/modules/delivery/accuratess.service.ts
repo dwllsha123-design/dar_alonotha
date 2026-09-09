@@ -424,8 +424,14 @@ export class AccuratessService {
     if (json.errors?.length) {
       return { ok: false as const, error: json.errors.map((e) => e.message).join('; ') };
     }
+    if (!json.data?.me) {
+      return {
+        ok: false as const,
+        error: 'Accuratess me query returned no user (check token / endpoint health)',
+      };
+    }
 
-    return { ok: true as const, me: json.data?.me };
+    return { ok: true as const, me: json.data.me };
   }
 
   private normalizeZoneName(value?: string | null) {
