@@ -1,7 +1,6 @@
 /**
- * Production one-shot Accuratess connectivity + NEW test shipment.
- * Never prints tokens. Never touches ORD-2026-000001.
- * City names are resolved from Accuratess zone dropdown (ASCII-safe script).
+ * Production verify — run inside Railway container (/app).
+ * Never prints secrets. Never touches ORD-2026-000001.
  */
 const { NestFactory } = require('@nestjs/core');
 
@@ -11,21 +10,11 @@ function present(v) {
 
 async function main() {
   if (process.env.ACCURATESS_WEBHOOK_ENABLED === 'true') {
-    console.error('REFUSE: ACCURATESS_WEBHOOK_ENABLED must stay false for this run');
+    console.error('REFUSE: ACCURATESS_WEBHOOK_ENABLED must stay false');
     process.exit(2);
   }
-
-  console.log('ENV_PRESENCE', {
-    ACCURATESS_ENABLED: process.env.ACCURATESS_ENABLED === 'true' ? 'true' : 'false/unset',
-    ACCURATESS_TOKEN: present(process.env.ACCURATESS_TOKEN) ? 'SET' : 'MISSING',
-    ACCURATESS_USERNAME: present(process.env.ACCURATESS_USERNAME) ? 'SET' : 'MISSING',
-    ACCURATESS_PASSWORD: present(process.env.ACCURATESS_PASSWORD) ? 'SET' : 'MISSING',
-    ACCURATESS_ENDPOINT: present(process.env.ACCURATESS_ENDPOINT) ? 'SET' : 'MISSING',
-    ACCURATESS_WEBHOOK_ENABLED: process.env.ACCURATESS_WEBHOOK_ENABLED || 'unset',
-  });
-
   if (present(process.env.ACCURATESS_TOKEN)) {
-    console.error('REFUSE: ACCURATESS_TOKEN must be absent for login-auth verification');
+    console.error('REFUSE: ACCURATESS_TOKEN must be absent');
     process.exit(2);
   }
   if (!present(process.env.ACCURATESS_USERNAME) || !present(process.env.ACCURATESS_PASSWORD)) {
@@ -33,12 +22,20 @@ async function main() {
     process.exit(2);
   }
 
-  const { AppModule } = require('../dist/app.module');
-  const { AccuratessService } = require('../dist/modules/delivery/accuratess.service');
-  const { OrderFulfillmentService } = require('../dist/modules/delivery/order-fulfillment.service');
-  const { DeliveryService } = require('../dist/modules/delivery/delivery.service');
-  const { PrismaService } = require('../dist/prisma/prisma.service');
-  const { resolvePrintAccuratessCode } = require('../dist/modules/delivery/accuratess-tracking');
+  console.log('ENV_PRESENCE', {
+    ACCURATESS_ENABLED: process.env.ACCURATESS_ENABLED === 'true' ? 'true' : 'false/unset',
+    ACCURATESS_TOKEN: 'MISSING',
+    ACCURATESS_USERNAME: 'SET',
+    ACCURATESS_PASSWORD: 'SET',
+    ACCURATESS_WEBHOOK_ENABLED: process.env.ACCURATESS_WEBHOOK_ENABLED || 'unset',
+  });
+
+  const { AppModule } = require('/app/dist/app.module');
+  const { AccuratessService } = require('/app/dist/modules/delivery/accuratess.service');
+  const { OrderFulfillmentService } = require('/app/dist/modules/delivery/order-fulfillment.service');
+  const { DeliveryService } = require('/app/dist/modules/delivery/delivery.service');
+  const { PrismaService } = require('/app/dist/prisma/prisma.service');
+  const { resolvePrintAccuratessCode } = require('/app/dist/modules/delivery/accuratess-tracking');
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn', 'log'],
@@ -61,43 +58,28 @@ async function main() {
     testOrderNumber: null,
     shipmentId: null,
     trackingCode: null,
-    cityUsed: null,
   };
 
   try {
-    if (!accuratess.isConfigured(null)) {
-      console.log(JSON.stringify({ ...out, error: 'Accuratess not configured' }, null, 2));
-      process.exit(1);
-    }
-
     const loggedIn = await accuratess.login(true);
     out.LOGIN_MUTATION = loggedIn.ok ? 'PASS' : 'FAIL';
     out.FRESH_TOKEN_OBTAINED = loggedIn.ok && present(loggedIn.token) ? 'YES' : 'NO';
     console.log('LOGIN', { ok: Boolean(loggedIn.ok), error: loggedIn.error || null });
     if (!loggedIn.ok) {
-      console.log(JSON.stringify(out, null, 2));
+      console.log('RESULT', JSON.stringify(out, null, 2));
       process.exit(1);
     }
 
     const ping = await accuratess.ping();
     out.AUTHENTICATED_ME = ping.ok ? 'PASS' : 'FAIL';
-    console.log('GRAPHQL_PING', { ok: Boolean(ping.ok), error: ping.error || null });
+    console.log('ME', { ok: Boolean(ping.ok), error: ping.error || null });
     if (!ping.ok) {
-      console.log(JSON.stringify(out, null, 2));
+      console.log('RESULT', JSON.stringify(out, null, 2));
       process.exit(1);
     }
 
-    // Destination city for local EXTERNAL routing (UTF-8 via hex to avoid transfer corruption).
-    // Accuratess recipient zone IDs come from ACCURATESS_DEFAULT_RECIPIENT_* env.
-    const city = Buffer.from('d985d8b5d8b1d8a7d8aad8a9', 'hex').toString('utf8'); // مصراتة
-    const area = Buffer.from('d8a7d984d985d8b1d983d8b2', 'hex').toString('utf8'); // المركز
-    out.cityUsed = city;
-    console.log('DEST_CITY', {
-      nameLen: city.length,
-      defaultRecipientZone: process.env.ACCURATESS_DEFAULT_RECIPIENT_ZONE_ID || null,
-      defaultRecipientSubzone: process.env.ACCURATESS_DEFAULT_RECIPIENT_SUBZONE_ID || null,
-    });
-
+    const city = Buffer.from('d985d8b5d8b1d8a7d8aad8a9', 'hex').toString('utf8');
+    const area = Buffer.from('d8a7d984d985d8b1d983d8b2', 'hex').toString('utf8');
     const stamp = Date.now();
     const orderNumber = `TEST-ACC-${stamp}`;
     const orderBarcode = `ORD-TEST-${stamp}`;
@@ -125,7 +107,7 @@ async function main() {
         city,
         area,
         address: 'Test street - ' + city,
-        notes: `accuratess-prod-verify-${stamp}`,
+        notes: `accuratess-login-verify-${stamp}`,
         createdById: admin?.id || undefined,
         items: {
           create: [
@@ -180,7 +162,6 @@ async function main() {
           : 'FAIL';
       console.log('SLIP_CHECK', {
         orderNumber: slip.order?.orderNumber,
-        shippingSlipNo: slip.shippingSlipNo,
         printCode: printCode || null,
         accuratessShipmentIdPresent: Boolean(slip.accuratessShipmentId),
         trackingCodePresent: Boolean(printCode),
@@ -201,6 +182,7 @@ async function main() {
       hasFulfillmentError: Boolean(old?.fulfillmentError),
     });
 
+    console.log('ROUTE_ERROR', routed?.error || routed?.fulfillmentError || null);
     console.log('RESULT', JSON.stringify(out, null, 2));
     if (
       out.SAVE_SHIPMENT !== 'PASS' ||
