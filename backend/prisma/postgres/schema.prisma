@@ -761,15 +761,17 @@ model OrderItem {
 
 /// مناطق طرابلس وأسعار التوصيل الرجالي والنسائي
 model DeliveryZone {
-  id        String   @id @default(cuid())
-  city      String   @default("طرابلس")
-  area      String
-  maleFee   Decimal  @default(15)
-  femaleFee Decimal  @default(20)
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  city          String   @default("طرابلس")
+  area          String
+  maleFee       Decimal  @default(15)
+  femaleFee     Decimal  @default(20)
+  maleEnabled   Boolean  @default(true)
+  femaleEnabled Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([city, area])
   @@index([city, isActive])

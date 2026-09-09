@@ -7,6 +7,8 @@ type Zone = {
   area: string;
   maleFee: string | number;
   femaleFee: string | number;
+  maleEnabled?: boolean;
+  femaleEnabled?: boolean;
   sortOrder: number;
   isActive: boolean;
 };
@@ -16,6 +18,67 @@ type Draft = {
   maleFee: number;
   femaleFee: number;
 };
+
+function GenderFeeCell(props: {
+  gender: 'male' | 'female';
+  fee: number;
+  enabled: boolean;
+  onFeeChange: (fee: number) => void;
+  onEnabledChange: () => void;
+  disabled?: boolean;
+}) {
+  const isMale = props.gender === 'male';
+  const label = isMale ? 'رجالي' : 'نسائي';
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        opacity: props.enabled ? 1 : 0.55,
+      }}
+    >
+      <label
+        title={
+          props.enabled
+            ? `${label} مفعّل للزبون — أزلِي التحديد للإخفاء`
+            : `${label} مخفي عن الزبون — حدّدي المربع لإظهاره`
+        }
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          cursor: props.disabled ? 'wait' : 'pointer',
+          margin: 0,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={props.enabled}
+          disabled={props.disabled}
+          onChange={props.onEnabledChange}
+          aria-label={
+            props.enabled ? `إخفاء التوصيل ${label} عن الزبون` : `إظهار التوصيل ${label} للزبون`
+          }
+          style={{ width: 16, height: 16, accentColor: 'var(--primary)' }}
+        />
+        <span className="material-symbols-outlined" style={{ fontSize: 18 }} aria-hidden>
+          {isMale ? 'man' : 'woman'}
+        </span>
+      </label>
+      <input
+        type="number"
+        min={0}
+        step="0.5"
+        value={props.fee}
+        disabled={!props.enabled || props.disabled}
+        onChange={(e) => props.onFeeChange(Number(e.target.value))}
+        style={{ width: 90 }}
+        aria-label={`سعر ${label}`}
+      />
+    </div>
+  );
+}
 
 export function DeliveryZonesPage() {
   const [rows, setRows] = useState<Zone[]>([]);
@@ -27,6 +90,7 @@ export function DeliveryZonesPage() {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   async function load() {
     const list = await api<Zone[]>('/delivery/zones');
@@ -80,6 +144,8 @@ export function DeliveryZonesPage() {
           area: area.trim(),
           maleFee,
           femaleFee,
+          maleEnabled: true,
+          femaleEnabled: true,
         }),
       });
       setArea('');
@@ -139,6 +205,37 @@ export function DeliveryZonesPage() {
     }
   }
 
+  async function toggleGender(z: Zone, gender: 'male' | 'female') {
+    const maleEnabled = gender === 'male' ? !(z.maleEnabled !== false) : z.maleEnabled !== false;
+    const femaleEnabled =
+      gender === 'female' ? !(z.femaleEnabled !== false) : z.femaleEnabled !== false;
+    if (!maleEnabled && !femaleEnabled) {
+      setError('يجب إبقاء نوع توصيل واحد على الأقل (رجالي أو نسائي)');
+      return;
+    }
+    setError('');
+    setMsg('');
+    setTogglingId(z.id);
+    try {
+      await api(`/delivery/zones/${z.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ maleEnabled, femaleEnabled }),
+      });
+      const label = gender === 'male' ? 'الرجالي' : 'النسائي';
+      const on = gender === 'male' ? maleEnabled : femaleEnabled;
+      setMsg(
+        on
+          ? `تم إظهار التوصيل ${label} لمنطقة «${z.area}»`
+          : `تم إخفاء التوصيل ${label} عن الزبون في «${z.area}»`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل التغيير');
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function removeRow(z: Zone) {
     if (!window.confirm(`حذف منطقة «${z.area}» من قائمة طرابلس؟`)) return;
     setError('');
@@ -178,8 +275,8 @@ export function DeliveryZonesPage() {
       <div className="page-title">
         <h1>تعديل مناطق طرابلس</h1>
         <p>
-          من هنا تغيّرين أسماء الأحياء، تضيفين منطقة جديدة، ترتّبين القائمة، أو تحذفين مكاناً. مربّع
-          «للزبون» إذا كان محدداً تظهر المنطقة عند الشراء، وإذا تُرك فارغاً لا تظهر للزبون.
+          مربّع بجانب سعر الرجالي/النسائي يحدّد إن كان هذا النوع يظهر للزبون. إن تركتِه فارغاً لا يظهر
+          ذلك النوع عند الشراء لهذه المنطقة. مربّع «للزبون» يخفي المنطقة بالكامل.
         </p>
       </div>
       {error ? <div className="error">{error}</div> : null}
@@ -266,7 +363,7 @@ export function DeliveryZonesPage() {
                   نسائي
                 </span>
               </th>
-              <th title="محدد = تظهر للزبون عند الشراء">للزبون</th>
+              <th title="محدد = تظهر المنطقة للزبون عند الشراء">للزبون</th>
               <th></th>
             </tr>
           </thead>
@@ -281,23 +378,23 @@ export function DeliveryZonesPage() {
                   />
                 </td>
                 <td>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={drafts[z.id]?.maleFee ?? Number(z.maleFee)}
-                    onChange={(e) => patchDraft(z.id, { maleFee: Number(e.target.value) })}
-                    style={{ width: 90 }}
+                  <GenderFeeCell
+                    gender="male"
+                    fee={drafts[z.id]?.maleFee ?? Number(z.maleFee)}
+                    enabled={z.maleEnabled !== false}
+                    disabled={togglingId === z.id}
+                    onFeeChange={(fee) => patchDraft(z.id, { maleFee: fee })}
+                    onEnabledChange={() => void toggleGender(z, 'male')}
                   />
                 </td>
                 <td>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={drafts[z.id]?.femaleFee ?? Number(z.femaleFee)}
-                    onChange={(e) => patchDraft(z.id, { femaleFee: Number(e.target.value) })}
-                    style={{ width: 90 }}
+                  <GenderFeeCell
+                    gender="female"
+                    fee={drafts[z.id]?.femaleFee ?? Number(z.femaleFee)}
+                    enabled={z.femaleEnabled !== false}
+                    disabled={togglingId === z.id}
+                    onFeeChange={(fee) => patchDraft(z.id, { femaleFee: fee })}
+                    onEnabledChange={() => void toggleGender(z, 'female')}
                   />
                 </td>
                 <td>

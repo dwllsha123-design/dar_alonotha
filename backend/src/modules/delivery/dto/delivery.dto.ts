@@ -107,6 +107,14 @@ export class UpsertDeliveryZoneDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  maleEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  femaleEnabled?: boolean;
 }
 
 export class UpdateDeliveryZoneDto {
@@ -131,4 +139,12 @@ export class UpdateDeliveryZoneDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  maleEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  femaleEnabled?: boolean;
 }

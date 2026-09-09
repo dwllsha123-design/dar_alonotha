@@ -10,7 +10,13 @@ type DeliveryCity = {
   deliveryType: string;
   areas: string[];
   requiresGender?: boolean;
-  areaDetails?: Array<{ nameAr: string; maleFee: number; femaleFee: number }>;
+  areaDetails?: Array<{
+    nameAr: string;
+    maleFee: number;
+    femaleFee: number;
+    maleEnabled?: boolean;
+    femaleEnabled?: boolean;
+  }>;
 };
 
 type Quote = {
@@ -21,6 +27,8 @@ type Quote = {
   gender?: 'MALE' | 'FEMALE' | null;
   maleFee?: number | null;
   femaleFee?: number | null;
+  maleEnabled?: boolean;
+  femaleEnabled?: boolean;
   requiresGender?: boolean;
 };
 
@@ -101,6 +109,17 @@ export function CheckoutPage() {
   const currentCity = cities.find((c) => c.nameAr === city);
   const requiresGender = Boolean(currentCity?.requiresGender);
   const areaDetail = currentCity?.areaDetails?.find((a) => a.nameAr === area);
+  const maleEnabled = areaDetail?.maleEnabled !== false;
+  const femaleEnabled = areaDetail?.femaleEnabled !== false;
+
+  useEffect(() => {
+    if (!requiresGender) return;
+    if (deliveryGender === 'FEMALE' && !femaleEnabled && maleEnabled) {
+      setDeliveryGender('MALE');
+    } else if (deliveryGender === 'MALE' && !maleEnabled && femaleEnabled) {
+      setDeliveryGender('FEMALE');
+    }
+  }, [area, requiresGender, maleEnabled, femaleEnabled, deliveryGender]);
 
   useEffect(() => {
     if (!city) return;
@@ -247,26 +266,33 @@ export function CheckoutPage() {
           <label style={{ gridColumn: '1 / -1' }}>
             نوع المندوب
             <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className={deliveryGender === 'FEMALE' ? 'btn' : 'btn secondary'}
-                onClick={() => setDeliveryGender('FEMALE')}
-              >
-                مندوبة نسائية
-                {areaDetail || quote?.femaleFee != null
-                  ? ` — ${money(areaDetail?.femaleFee ?? quote?.femaleFee ?? 0)}`
-                  : ''}
-              </button>
-              <button
-                type="button"
-                className={deliveryGender === 'MALE' ? 'btn' : 'btn secondary'}
-                onClick={() => setDeliveryGender('MALE')}
-              >
-                مندوب رجالي
-                {areaDetail || quote?.maleFee != null
-                  ? ` — ${money(areaDetail?.maleFee ?? quote?.maleFee ?? 0)}`
-                  : ''}
-              </button>
+              {femaleEnabled ? (
+                <button
+                  type="button"
+                  className={deliveryGender === 'FEMALE' ? 'btn' : 'btn secondary'}
+                  onClick={() => setDeliveryGender('FEMALE')}
+                >
+                  مندوبة نسائية
+                  {areaDetail || quote?.femaleFee != null
+                    ? ` — ${money(areaDetail?.femaleFee ?? quote?.femaleFee ?? 0)}`
+                    : ''}
+                </button>
+              ) : null}
+              {maleEnabled ? (
+                <button
+                  type="button"
+                  className={deliveryGender === 'MALE' ? 'btn' : 'btn secondary'}
+                  onClick={() => setDeliveryGender('MALE')}
+                >
+                  مندوب رجالي
+                  {areaDetail || quote?.maleFee != null
+                    ? ` — ${money(areaDetail?.maleFee ?? quote?.maleFee ?? 0)}`
+                    : ''}
+                </button>
+              ) : null}
+              {!femaleEnabled && !maleEnabled ? (
+                <span className="muted">لا يتوفر توصيل لهذه المنطقة حالياً</span>
+              ) : null}
             </div>
           </label>
         ) : null}

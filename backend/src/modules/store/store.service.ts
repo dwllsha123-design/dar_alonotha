@@ -132,11 +132,15 @@ export class StoreService {
           nameAr: z.area,
           maleFee: Number(z.maleFee),
           femaleFee: Number(z.femaleFee),
+          maleEnabled: z.maleEnabled !== false,
+          femaleEnabled: z.femaleEnabled !== false,
         }))
       : TRIPOLI_AREAS.map((a) => ({
           nameAr: a.nameAr,
           maleFee: company.deliveryFeeTripoliMale,
           femaleFee: company.deliveryFeeTripoliFemale,
+          maleEnabled: true,
+          femaleEnabled: true,
         }));
 
     return {
@@ -183,12 +187,26 @@ export class StoreService {
       };
     }
 
-    const parsed = parseDeliveryGender(gender) || 'FEMALE';
     const row = areaName
       ? await this.prisma.deliveryZone.findFirst({
           where: { city: 'طرابلس', area: areaName, isActive: true },
         })
       : null;
+    const maleEnabled = row ? row.maleEnabled !== false : true;
+    const femaleEnabled = row ? row.femaleEnabled !== false : true;
+    if (!maleEnabled && !femaleEnabled) {
+      throw new BadRequestException('لا يتوفر توصيل رجالي أو نسائي لهذه المنطقة حالياً');
+    }
+    let parsed = parseDeliveryGender(gender);
+    if (!parsed) {
+      parsed = femaleEnabled ? 'FEMALE' : 'MALE';
+    }
+    if (parsed === 'MALE' && !maleEnabled) {
+      throw new BadRequestException('التوصيل الرجالي غير متاح لهذه المنطقة');
+    }
+    if (parsed === 'FEMALE' && !femaleEnabled) {
+      throw new BadRequestException('التوصيل النسائي غير متاح لهذه المنطقة');
+    }
     const maleFee = row ? Number(row.maleFee) : company.deliveryFeeTripoliMale;
     const femaleFee = row
       ? Number(row.femaleFee)
@@ -204,8 +222,10 @@ export class StoreService {
       mode: zone.mode,
       gender: parsed,
       requiresGender: true,
-      maleFee,
-      femaleFee,
+      maleFee: maleEnabled ? maleFee : null,
+      femaleFee: femaleEnabled ? femaleFee : null,
+      maleEnabled,
+      femaleEnabled,
       labelAr: areaName
         ? `رسوم التوصيل ${genderLabel} (${areaName})`
         : `رسوم التوصيل ${genderLabel}`,

@@ -36,6 +36,13 @@ export function NewFacebookOrderPage() {
       deliveryType: string;
       areas: string[];
       requiresGender?: boolean;
+      areaDetails?: Array<{
+        nameAr: string;
+        maleFee: number;
+        femaleFee: number;
+        maleEnabled?: boolean;
+        femaleEnabled?: boolean;
+      }>;
     }>
   >([]);
   const [city, setCity] = useState('طرابلس');
@@ -77,7 +84,20 @@ export function NewFacebookOrderPage() {
     () => cities.find((c) => c.nameAr === city)?.areas || [],
     [cities, city],
   );
-  const requiresGender = Boolean(cities.find((c) => c.nameAr === city)?.requiresGender);
+  const currentCity = cities.find((c) => c.nameAr === city);
+  const requiresGender = Boolean(currentCity?.requiresGender);
+  const areaDetail = currentCity?.areaDetails?.find((a) => a.nameAr === area);
+  const maleEnabled = areaDetail?.maleEnabled !== false;
+  const femaleEnabled = areaDetail?.femaleEnabled !== false;
+
+  useEffect(() => {
+    if (!requiresGender) return;
+    if (deliveryGender === 'FEMALE' && !femaleEnabled && maleEnabled) {
+      setDeliveryGender('MALE');
+    } else if (deliveryGender === 'MALE' && !maleEnabled && femaleEnabled) {
+      setDeliveryGender('FEMALE');
+    }
+  }, [area, requiresGender, maleEnabled, femaleEnabled, deliveryGender]);
 
   useEffect(() => {
     if (!city || !area) return;
@@ -242,8 +262,8 @@ export function NewFacebookOrderPage() {
                 value={deliveryGender}
                 onChange={(e) => setDeliveryGender(e.target.value as 'MALE' | 'FEMALE')}
               >
-                <option value="FEMALE">نسائي</option>
-                <option value="MALE">رجالي</option>
+                {femaleEnabled ? <option value="FEMALE">نسائي</option> : null}
+                {maleEnabled ? <option value="MALE">رجالي</option> : null}
               </select>
             </label>
           ) : null}
