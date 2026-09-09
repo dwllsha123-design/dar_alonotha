@@ -182,7 +182,7 @@ export function DeliveryPrintPage() {
               </div>
             ) : null}
 
-            <div className="parties">
+            <div className="parties" style={isExternal ? { gridTemplateColumns: '1fr' } : undefined}>
               <div className="party">
                 <h2>الراسل</h2>
                 <div className="name">
@@ -196,15 +196,17 @@ export function DeliveryPrintPage() {
                   {s.order.facebookPage?.publicCode || s.order.pagePublicCode || '—'}
                 </div>
               </div>
-              <div className="party">
-                <h2>المستلم</h2>
-                <div className="name">{s.order.shippingName || '—'}</div>
-                <div>الهاتف: {s.order.shippingPhone || '—'}</div>
-                <div>
-                  {[s.order.address, s.order.area, s.order.city].filter(Boolean).join(' — ') ||
-                    '—'}
+              {!isExternal ? (
+                <div className="party">
+                  <h2>المستلم</h2>
+                  <div className="name">{s.order.shippingName || '—'}</div>
+                  <div>الهاتف: {s.order.shippingPhone || '—'}</div>
+                  <div>
+                    {[s.order.address, s.order.area, s.order.city].filter(Boolean).join(' — ') ||
+                      '—'}
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
             <div className="meta">
               {!isExternal ? (
@@ -220,28 +222,32 @@ export function DeliveryPrintPage() {
                 </div>
               ) : null}
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>المنتج</th>
-                  <th>الكمية</th>
-                  <th>المبلغ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {s.order.items.map((it, idx) => (
-                  <tr key={idx}>
-                    <td>
-                      {it.productName}
-                      {it.variantName ? ` — ${it.variantName}` : ''}
-                    </td>
-                    <td>{it.quantity}</td>
-                    <td>{money(it.lineTotal)}</td>
+            {!isExternal ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>المنتج</th>
+                    <th>الكمية</th>
+                    <th>المبلغ</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {s.order.notes ? <p style={{ marginTop: 12 }}>ملاحظات: {s.order.notes}</p> : null}
+                </thead>
+                <tbody>
+                  {s.order.items.map((it, idx) => (
+                    <tr key={idx}>
+                      <td>
+                        {it.productName}
+                        {it.variantName ? ` — ${it.variantName}` : ''}
+                      </td>
+                      <td>{it.quantity}</td>
+                      <td>{money(it.lineTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+            {!isExternal && s.order.notes ? (
+              <p style={{ marginTop: 12 }}>ملاحظات: {s.order.notes}</p>
+            ) : null}
           </section>
         );
       })}
