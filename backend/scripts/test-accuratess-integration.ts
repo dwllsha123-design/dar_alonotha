@@ -359,7 +359,7 @@ async function main() {
     );
 
     // 3) UI-facing reads
-    const orderDetail = await orders.findOne(order.id);
+    const orderDetail = await orders.findOne(admin, order.id);
     checks.push(
       assert(
         orderDetail.externalTrackingNumber === firstCode,
@@ -486,52 +486,67 @@ async function main() {
     );
 
     if (process.env.ACCURATESS_ENABLED === 'true') {
-      const failOrder2 = await createExternalTestOrder(prisma, admin.id);
+      const failOrder2 = await createExternalTestOrder(
+        prisma,
+        admin.id,
+        destination.city,
+        destination.area,
+      );
       await prisma.externalShippingAccount.deleteMany({
         where: { label: '__test_bad_account__' },
       });
-      const fbPage = await prisma.facebookPage.findFirst();
-      if (fbPage) {
-        await prisma.externalShippingAccount.create({
-          data: {
-            facebookPageId: fbPage.id,
-            label: '__test_bad_account__',
-            apiToken: 'invalid-token-for-test-only',
-            isActive: true,
-          },
-        });
-        await prisma.order.update({
-          where: { id: failOrder2.id },
-          data: { facebookPageId: fbPage.id },
-        });
-        let assignFailThrown = false;
-        let assignFailMsg = '';
-        try {
-          await delivery.assign(admin, { orderId: failOrder2.id, type: 'EXTERNAL' });
-        } catch (err) {
-          assignFailThrown = true;
-          assignFailMsg = err instanceof Error ? err.message : String(err);
-        }
-        const fail2 = await prisma.order.findUnique({ where: { id: failOrder2.id } });
-        checks.push(
-          assert(
-            assignFailThrown,
-            'assign throws when Accurate configured but shipment fails',
-            assignFailThrown ? assignFailMsg : 'no exception thrown',
-          ),
-        );
-        checks.push(
-          assert(
-            !fail2?.externalTrackingNumber,
-            'failed assign does not save tracking code on order',
-            String(fail2?.externalTrackingNumber),
-          ),
-        );
-        await prisma.externalShippingAccount.deleteMany({
-          where: { label: '__test_bad_account__' },
-        });
-        await prisma.order.delete({ where: { id: failOrder2.id } }).catch(() => undefined);
+      // Dedicated page so we do not collide with existing page↔account uniqueness
+      const failPage = await prisma.facebookPage.upsert({
+        where: { publicCode: 8899 },
+        create: {
+          name: '__test_bad_page__',
+          publicCode: 8899,
+          status: 'ACTIVE',
+        },
+        update: { name: '__test_bad_page__', status: 'ACTIVE' },
+      });
+      await prisma.externalShippingAccount.deleteMany({
+        where: { facebookPageId: failPage.id },
+      });
+      await prisma.externalShippingAccount.create({
+        data: {
+          facebookPageId: failPage.id,
+          label: '__test_bad_account__',
+          apiToken: 'invalid-token-for-test-only',
+          isActive: true,
+        },
+      });
+      await prisma.order.update({
+        where: { id: failOrder2.id },
+        data: { facebookPageId: failPage.id },
+      });
+      let assignFailThrown = false;
+      let assignFailMsg = '';
+      try {
+        await delivery.assign(admin, { orderId: failOrder2.id, type: 'EXTERNAL' });
+      } catch (err) {
+        assignFailThrown = true;
+        assignFailMsg = err instanceof Error ? err.message : String(err);
       }
+      const fail2 = await prisma.order.findUnique({ where: { id: failOrder2.id } });
+      checks.push(
+        assert(
+          assignFailThrown,
+          'assign throws when Accurate configured but shipment fails',
+          assignFailThrown ? assignFailMsg : 'no exception thrown',
+        ),
+      );
+      checks.push(
+        assert(
+          !fail2?.externalTrackingNumber,
+          'failed assign does not save tracking code on order',
+          String(fail2?.externalTrackingNumber),
+        ),
+      );
+      await prisma.externalShippingAccount.deleteMany({
+        where: { label: '__test_bad_account__' },
+      });
+      await prisma.order.delete({ where: { id: failOrder2.id } }).catch(() => undefined);
     }
 
     checks.push(...scanLogsForSecrets());
