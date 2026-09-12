@@ -9,7 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/order.dto';
 import { CentralInventoryService } from '../inventory/services/central-inventory.service';
-import { canViewCostPrices, retailOf } from '../../common/pricing/price-policy';
+import { retailOf } from '../../common/pricing/price-policy';
 import { CommissionsService } from '../commissions/commissions.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OrderFulfillmentService } from '../delivery/order-fulfillment.service';
@@ -261,7 +261,6 @@ export class OrdersService {
           )
         : null;
 
-    const forceRetail = !canViewCostPrices(user);
     // خصم المخزون عند التأكيد لطلبات فيسبوك/الموقع؛ POS يخصم فوراً
     const deductStock =
       dto.deductStock != null
@@ -307,9 +306,12 @@ export class OrdersService {
           throw new NotFoundException('منتج غير متوفر');
         }
 
-        const unitPrice = forceRetail
-          ? retailOf(variant)
-          : Number(item.unitPrice ?? retailOf(variant));
+        const retail = retailOf(variant);
+        // Honor explicit unitPrice so Facebook reps can adjust (help/raise) the sale price.
+        const unitPrice =
+          item.unitPrice != null && Number.isFinite(Number(item.unitPrice))
+            ? Number(item.unitPrice)
+            : retail;
         const discount = item.discount ?? 0;
         const lineTotal = item.quantity * unitPrice - discount;
 

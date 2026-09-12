@@ -32,7 +32,7 @@ export class CreateOrderItemDto {
   @Min(1)
   quantity!: number;
 
-  /** Ignored for sales agents — backend forces retailPrice */
+  /** Optional override of retail price (e.g. Facebook reps adjusting for a customer). */
   @IsOptional()
   @IsNumber()
   @Min(0)
