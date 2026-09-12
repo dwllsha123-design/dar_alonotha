@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { FulfillmentType, LocalOrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findDeliveryCity } from '../../common/delivery/delivery-zones';
-import { PAGE_SHIPPING_ACCOUNT_REQUIRED } from '../../common/order-access';
 import { AccuratessService } from './accuratess.service';
 import {
   asAccuratessShipmentId,
@@ -29,49 +28,46 @@ export class OrderFulfillmentService {
   }
 
   /**
-   * Resolve Al-Meyar/Accuratess credentials for an order.
-   * Page-attributed orders use ONLY that page's ExternalShippingAccount.
-   * Never fall back to another page's account or a random active account.
+   * Accuratess credentials for EXTERNAL shipments.
+   *
+   * Business policy: ALL Facebook Page orders and legacy website orders use the
+   * same GLOBAL Accuratess/Al-Meyar configuration (env username/password or token).
+   * Per-page ExternalShippingAccount rows are retained historically but are NOT
+   * used for authentication.
+   *
+   * Returns null so AccuratessService uses global runtime login / env token.
    */
-  async resolvePageAccount(order: {
+  async resolvePageAccount(_order: {
     facebookPageId?: string | null;
     pagePublicCode?: number | null;
     pageSource?: string | null;
-  }) {
-    if (order.facebookPageId) {
-      return this.prisma.externalShippingAccount.findFirst({
-        where: { facebookPageId: order.facebookPageId, isActive: true },
-      });
-    }
-
-    if (order.pagePublicCode != null) {
-      const page = await this.prisma.facebookPage.findUnique({
-        where: { publicCode: order.pagePublicCode },
-        include: { shippingAccount: true },
-      });
-      if (page?.shippingAccount?.isActive) return page.shippingAccount;
-    }
-
-    // Non-page / legacy orders: no cross-page account guessing.
+  }): Promise<{
+    id: string;
+    label: string | null;
+    pageIdentifier: string | null;
+    apiToken: string;
+    endpoint: string | null;
+    senderZoneId: string | null;
+    senderSubzoneId: string | null;
+  } | null> {
     return null;
   }
 
-  /** Block EXTERNAL shipment when the order's Facebook page has no linked account. */
+  /**
+   * @deprecated Page-specific Al-Meyar accounts are no longer required.
+   * Kept as a no-op for call-site compatibility.
+   */
   requirePageShippingAccount(
-    order: { facebookPageId?: string | null; pagePublicCode?: number | null },
-    account: { id: string } | null | undefined,
+    _order: { facebookPageId?: string | null; pagePublicCode?: number | null },
+    _account: { id: string } | null | undefined,
   ) {
-    const isPageOrder =
-      Boolean(order.facebookPageId) || order.pagePublicCode != null;
-    if (isPageOrder && !account) {
-      throw new BadRequestException(PAGE_SHIPPING_ACCOUNT_REQUIRED);
-    }
+    // Global Accuratess configuration is used for all EXTERNAL page/website orders.
   }
 
   /**
    * توجيه ذكي عند إنشاء/اعتماد الطلب:
    * طرابلس → internal + local_status
-   * خارجها → external + Accuratess بمفتاح صفحة الطلب
+   * خارجها → external + Accuratess بالحساب العام (الموقع)
    */
   async routeOrder(orderId: string) {
     const order = await this.prisma.order.findUnique({
@@ -110,7 +106,7 @@ export class OrderFulfillmentService {
       };
     }
 
-    // EXTERNAL
+    // EXTERNAL — always global Accuratess (page attribution does not pick credentials)
     const account = await this.resolvePageAccount({
       facebookPageId: order.facebookPageId,
       pagePublicCode: order.pagePublicCode,

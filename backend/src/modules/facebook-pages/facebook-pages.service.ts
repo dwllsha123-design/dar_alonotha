@@ -114,15 +114,7 @@ export class FacebookPagesService {
           select: {
             id: true,
             label: true,
-            pageIdentifier: true,
-            endpoint: true,
-            senderZoneId: true,
-            senderSubzoneId: true,
             isActive: true,
-            notes: true,
-            updatedAt: true,
-            /** لا نُرجع التوكن كاملاً في القائمة */
-            apiToken: true,
           },
         },
         _count: { select: { orders: true } },
@@ -132,24 +124,14 @@ export class FacebookPagesService {
 
     return pages.map((p) => {
       const links = this.linksFor(p.publicCode);
-      const token = p.shippingAccount?.apiToken;
-      const shippingAccount =
-        isAdmin && p.shippingAccount
-          ? {
-              ...p.shippingAccount,
-              apiToken: token
-                ? `${token.slice(0, 4)}…${token.slice(-4)}`
-                : null,
-              hasToken: Boolean(token),
-            }
-          : null;
+      // Accuratess credentials are global backend config — never expose page shipping secrets.
       return {
         ...p,
         username: isAdmin ? p.username : undefined,
         passwordHash: undefined,
         hasCredentials: Boolean(p.username && p.passwordHash),
         ...links,
-        shippingAccount,
+        shippingAccount: null,
         employees: isAdmin
           ? p.employees
           : p.employees.filter((e) => e.userId === user.id),
@@ -177,7 +159,6 @@ export class FacebookPagesService {
             user: { select: { id: true, name: true, phone: true, email: true } },
           },
         },
-        shippingAccount: { select: SHIPPING_ACCOUNT_PUBLIC_SELECT },
         orders: {
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -198,16 +179,8 @@ export class FacebookPagesService {
 
     const isAdmin =
       user.roles.includes('super_admin') || user.roles.includes('admin');
-    const shippingAccount = isAdmin
-      ? maskShippingAccount(page.shippingAccount)
-      : page.shippingAccount
-        ? {
-            id: page.shippingAccount.id,
-            label: page.shippingAccount.label,
-            hasToken: Boolean(page.shippingAccount.apiToken),
-            isActive: page.shippingAccount.isActive,
-          }
-        : null;
+    // Accuratess is global backend config — never surface page shipping secrets in page APIs.
+    const shippingAccount = null;
 
     const safe = isAdmin
       ? page

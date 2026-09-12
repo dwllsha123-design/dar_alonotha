@@ -27,25 +27,11 @@ type PageMeta = {
   shortUrl?: string;
   referralLink?: string;
   _count?: { orders: number };
-  shippingAccount?: {
-    id: string;
-    label?: string | null;
-    hasToken?: boolean;
-    isActive?: boolean;
-  } | null;
   employees?: Array<{
     userId: string;
     role: string;
     user: { id: string; name: string };
   }>;
-};
-
-type ShippingAccountOption = {
-  id: string;
-  label: string;
-  pageName: string;
-  pagePublicCode: number;
-  facebookPageId: string;
 };
 
 type Dashboard = {
@@ -222,10 +208,6 @@ export function FacebookPageDetailPage() {
   });
 
   const [settings, setSettings] = useState({ name: '', notes: '', status: 'ACTIVE' });
-  const [shipAccounts, setShipAccounts] = useState<ShippingAccountOption[]>([]);
-  const [shipSelect, setShipSelect] = useState('');
-  const [shipToken, setShipToken] = useState('');
-  const [shipLabel, setShipLabel] = useState('');
   const [copied, setCopied] = useState('');
   const [printPreset, setPrintPreset] = useState<'today' | 'range' | 'ready' | 'shipped'>('today');
   const [printFrom, setPrintFrom] = useState('');
@@ -244,15 +226,7 @@ export function FacebookPageDetailPage() {
       notes: p.notes || '',
       status: p.status || 'ACTIVE',
     });
-    setShipSelect(p.shippingAccount?.id || '');
-    setShipLabel(p.shippingAccount?.label || p.name || '');
-    setShipToken('');
   }, [id]);
-
-  const loadShippingAccounts = useCallback(async () => {
-    const list = await api<ShippingAccountOption[]>('/facebook-pages/shipping-accounts');
-    setShipAccounts(list);
-  }, []);
 
   const loadDashboard = useCallback(async () => {
     const data = await api<Dashboard>(`/facebook-pages/${id}/dashboard`);
@@ -289,11 +263,6 @@ export function FacebookPageDetailPage() {
     setError('');
     loadPage().catch((e) => setError(e.message));
   }, [loadPage]);
-
-  useEffect(() => {
-    if (tab !== 'settings') return;
-    loadShippingAccounts().catch(() => setShipAccounts([]));
-  }, [tab, loadShippingAccounts]);
 
   useEffect(() => {
     if (!id) return;
@@ -544,49 +513,6 @@ export function FacebookPageDetailPage() {
       setTimeout(() => setCopied(''), 2000);
     } catch {
       setError('تعذّر نسخ الرابط');
-    }
-  }
-
-  async function saveShippingLink() {
-    setBusy(true);
-    setError('');
-    try {
-      if (!shipSelect) {
-        await api(`/facebook-pages/${id}/shipping-account/link`, {
-          method: 'PUT',
-          body: JSON.stringify({ shippingAccountId: null }),
-        });
-        setMsg('تم إزالة ربط حساب المعيار');
-      } else if (shipSelect === '__new__') {
-        if (!shipToken.trim()) {
-          setError('أدخلي مفتاح حساب المعيار أو اختاري حساباً موجوداً');
-          setBusy(false);
-          return;
-        }
-        await api(`/facebook-pages/${id}/shipping-account`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            apiToken: shipToken.trim(),
-            label: shipLabel || settings.name,
-            pageIdentifier: shipLabel || settings.name,
-            isActive: true,
-          }),
-        });
-        setMsg('تم حفظ حساب المعيار لهذه الصفحة');
-        setShipToken('');
-      } else {
-        await api(`/facebook-pages/${id}/shipping-account/link`, {
-          method: 'PUT',
-          body: JSON.stringify({ shippingAccountId: shipSelect }),
-        });
-        setMsg('تم ربط حساب المعيار بالصفحة');
-      }
-      await loadPage();
-      await loadShippingAccounts();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'فشل حفظ حساب الشحن');
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -1446,63 +1372,10 @@ export function FacebookPageDetailPage() {
           </div>
 
           <div className="panel stack">
-            <strong>حساب الشحن – المعيار</strong>
+            <strong>الشحن الخارجي</strong>
             <p className="muted" style={{ margin: 0 }}>
-              عند شحن طلبات هذه الصفحة خارجياً يُستخدم هذا الحساب تلقائياً. لا تُعرض المفاتيح السرية كاملة.
+              طلبات هذه الصفحة تُشحن عبر حساب المعيار العام للموقع — لا حاجة لربط مفتاح منفصل لكل صفحة.
             </p>
-            <label>
-              الحساب المرتبط
-              <select
-                value={shipSelect}
-                onChange={(e) => setShipSelect(e.target.value)}
-              >
-                <option value="">بدون حساب محدد</option>
-                {shipAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.label}
-                    {a.facebookPageId === id ? ' (هذه الصفحة)' : ` — ${a.pageName}`}
-                  </option>
-                ))}
-                <option value="__new__">إدخال مفتاح جديد…</option>
-              </select>
-            </label>
-            {shipSelect === '__new__' ? (
-              <div className="form-grid two">
-                <label>
-                  اسم الحساب (للعرض)
-                  <input
-                    value={shipLabel}
-                    onChange={(e) => setShipLabel(e.target.value)}
-                    placeholder={settings.name}
-                  />
-                </label>
-                <label>
-                  مفتاح API
-                  <input
-                    type="password"
-                    value={shipToken}
-                    onChange={(e) => setShipToken(e.target.value)}
-                    placeholder="الصق مفتاح المعيار"
-                    autoComplete="off"
-                  />
-                </label>
-              </div>
-            ) : null}
-            {page?.shippingAccount?.hasToken ? (
-              <p className="muted" style={{ margin: 0 }}>
-                الحالي: {page.shippingAccount.label || 'حساب مربوط'} ✓
-              </p>
-            ) : (
-              <p className="muted" style={{ margin: 0 }}>غير مربوط</p>
-            )}
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() => saveShippingLink()}
-            >
-              حفظ حساب الشحن
-            </button>
           </div>
 
           <div className="panel stack">

@@ -486,17 +486,8 @@ async function main() {
     );
 
     if (process.env.ACCURATESS_ENABLED === 'true') {
-      const failOrder2 = await createExternalTestOrder(
-        prisma,
-        admin.id,
-        destination.city,
-        destination.area,
-      );
-      await prisma.externalShippingAccount.deleteMany({
-        where: { label: '__test_bad_account__' },
-      });
-      // Dedicated page so we do not collide with existing page↔account uniqueness
-      const failPage = await prisma.facebookPage.upsert({
+      // Policy: page-specific ExternalShippingAccount is ignored — global Accuratess is used.
+      const pageWithBad = await prisma.facebookPage.upsert({
         where: { publicCode: 8899 },
         create: {
           name: '__test_bad_page__',
@@ -506,47 +497,29 @@ async function main() {
         update: { name: '__test_bad_page__', status: 'ACTIVE' },
       });
       await prisma.externalShippingAccount.deleteMany({
-        where: { facebookPageId: failPage.id },
+        where: { facebookPageId: pageWithBad.id },
       });
       await prisma.externalShippingAccount.create({
         data: {
-          facebookPageId: failPage.id,
+          facebookPageId: pageWithBad.id,
           label: '__test_bad_account__',
           apiToken: 'invalid-token-for-test-only',
           isActive: true,
         },
       });
-      await prisma.order.update({
-        where: { id: failOrder2.id },
-        data: { facebookPageId: failPage.id },
+      const resolved = await fulfillment.resolvePageAccount({
+        facebookPageId: pageWithBad.id,
       });
-      let assignFailThrown = false;
-      let assignFailMsg = '';
-      try {
-        await delivery.assign(admin, { orderId: failOrder2.id, type: 'EXTERNAL' });
-      } catch (err) {
-        assignFailThrown = true;
-        assignFailMsg = err instanceof Error ? err.message : String(err);
-      }
-      const fail2 = await prisma.order.findUnique({ where: { id: failOrder2.id } });
       checks.push(
         assert(
-          assignFailThrown,
-          'assign throws when Accurate configured but shipment fails',
-          assignFailThrown ? assignFailMsg : 'no exception thrown',
-        ),
-      );
-      checks.push(
-        assert(
-          !fail2?.externalTrackingNumber,
-          'failed assign does not save tracking code on order',
-          String(fail2?.externalTrackingNumber),
+          resolved == null,
+          'page ExternalShippingAccount is ignored (global Accuratess)',
+          resolved ? `unexpected account id=${resolved.id}` : 'null → global',
         ),
       );
       await prisma.externalShippingAccount.deleteMany({
         where: { label: '__test_bad_account__' },
       });
-      await prisma.order.delete({ where: { id: failOrder2.id } }).catch(() => undefined);
     }
 
     checks.push(...scanLogsForSecrets());

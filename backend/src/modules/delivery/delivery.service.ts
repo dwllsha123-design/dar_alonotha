@@ -362,7 +362,7 @@ export class DeliveryService {
 
     const senderName = await this.resolveSenderName(order);
 
-    // خارج طرابلس: إرسال لشركة Accuratess بمفتاح حساب الصفحة إن وُجد
+    // خارج طرابلس: إرسال لشركة Accuratess بالحساب العام (نفس حساب الموقع)
     let accuratessResult: Record<string, unknown> | null = null;
     let accuratessShipmentId: string | undefined;
     if (type === 'EXTERNAL') {
@@ -389,7 +389,8 @@ export class DeliveryService {
         };
       }
 
-      let account = await this.fulfillment.resolvePageAccount({
+      // Always null → AccuratessService uses global env login/token
+      const account = await this.fulfillment.resolvePageAccount({
         facebookPageId: order.facebookPageId,
         pagePublicCode: order.pagePublicCode,
         pageSource: order.pageSource || order.facebookPage?.name || null,

@@ -15,7 +15,6 @@ import * as bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { OrderFulfillmentService } from '../src/modules/delivery/order-fulfillment.service';
-import { PAGE_SHIPPING_ACCOUNT_REQUIRED } from '../src/common/order-access';
 import { ROLE_CODES } from '../src/common/permissions';
 import { PERMISSION_META } from '../src/common/permissions';
 
@@ -373,7 +372,7 @@ async function main() {
     `status=${inactiveCheckout.status} msg=${inactiveCheckout.message || inactiveCheckout.json?.message}`,
   );
 
-  console.log('\n=== Shipping account isolation ===');
+  console.log('\n=== Shipping uses global Accuratess ===');
 
   const resolvedA = await fulfillment.resolvePageAccount({
     facebookPageId: pageA.id,
@@ -382,41 +381,50 @@ async function main() {
     facebookPageId: pageB.id,
   });
   ok(
-    'Page A shipment resolves Account A',
-    resolvedA?.id === acctA.id && resolvedA?.apiToken === 'token-page-a-secret-aaaa',
+    'Page A shipment uses global Accuratess (no page-specific account)',
+    resolvedA == null,
+    `resolved=${resolvedA?.id}`,
   );
   ok(
-    'Page B shipment resolves Account B',
-    resolvedB?.id === acctB.id && resolvedB?.apiToken === 'token-page-b-secret-bbbb',
+    'Page B shipment uses same global Accuratess path',
+    resolvedB == null,
+    `resolved=${resolvedB?.id}`,
   );
   ok(
-    'no cross-account usage A↔B',
-    resolvedA?.id !== resolvedB?.id &&
-      resolvedA?.apiToken !== resolvedB?.apiToken,
+    'Page A and Page B share global credentials path',
+    resolvedA == null && resolvedB == null,
   );
 
-  let missingMsg = '';
+  let missingThrew = false;
   try {
     fulfillment.requirePageShippingAccount(
       { facebookPageId: pageInactive.id },
       null,
     );
-  } catch (err) {
-    missingMsg = err instanceof Error ? err.message : String(err);
+  } catch {
+    missingThrew = true;
   }
   ok(
-    'missing page shipping account → clear failure',
-    missingMsg.includes(PAGE_SHIPPING_ACCOUNT_REQUIRED) ||
-      missingMsg.includes('لم يتم ربط حساب المعيار'),
-    missingMsg,
+    'page with no ExternalShippingAccount is not blocked',
+    missingThrew === false,
   );
 
   const orphanResolved = await fulfillment.resolvePageAccount({
     facebookPageId: pageInactive.id,
   });
   ok(
-    'page without account does not fall back to another page',
+    'page without ExternalShippingAccount still resolves to global (null account)',
     orphanResolved == null,
+  );
+
+  // Non-page / legacy order path also uses global
+  const legacyResolved = await fulfillment.resolvePageAccount({
+    facebookPageId: null,
+    pagePublicCode: null,
+  });
+  ok(
+    'legacy/non-page order uses global Accuratess path',
+    legacyResolved == null,
   );
 
   console.log('\n=== Labels scope ===');

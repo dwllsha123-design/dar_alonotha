@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from './decorators/current-user.decorator';
 import { ROLE_CODES } from './permissions';
 
-/** Shown when an EXTERNAL page shipment has no linked Al-Meyar account. */
+/** Historical message — page-specific shipping accounts are no longer required. */
 export const PAGE_SHIPPING_ACCOUNT_REQUIRED =
   'لم يتم ربط حساب المعيار بهذه الصفحة.';
 
