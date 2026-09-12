@@ -82,6 +82,26 @@ export class BulkSlipsDto {
   @IsOptional()
   @IsString()
   facebookPageId?: string;
+
+  /** ISO date (inclusive start of day) */
+  @IsOptional()
+  @IsString()
+  from?: string;
+
+  /** ISO date (inclusive end of day) */
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  /** Ready-to-ship statuses only (NEW/CONFIRMED/PREPARING/READY) */
+  @IsOptional()
+  @IsBoolean()
+  readyOnly?: boolean;
+
+  /** Only orders that already have an external shipment / delivery tracking */
+  @IsOptional()
+  @IsBoolean()
+  hasShipment?: boolean;
 }
 
 export class UpsertDeliveryZoneDto {

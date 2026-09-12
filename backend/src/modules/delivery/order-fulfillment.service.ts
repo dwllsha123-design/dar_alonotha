@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { FulfillmentType, LocalOrderStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findDeliveryCity } from '../../common/delivery/delivery-zones';
+import { PAGE_SHIPPING_ACCOUNT_REQUIRED } from '../../common/order-access';
 import { AccuratessService } from './accuratess.service';
 import {
   asAccuratessShipmentId,
@@ -27,16 +28,20 @@ export class OrderFulfillmentService {
     return zone.mode === 'OWN_AGENTS' ? 'INTERNAL' : 'EXTERNAL';
   }
 
+  /**
+   * Resolve Al-Meyar/Accuratess credentials for an order.
+   * Page-attributed orders use ONLY that page's ExternalShippingAccount.
+   * Never fall back to another page's account or a random active account.
+   */
   async resolvePageAccount(order: {
     facebookPageId?: string | null;
     pagePublicCode?: number | null;
     pageSource?: string | null;
   }) {
     if (order.facebookPageId) {
-      const byPage = await this.prisma.externalShippingAccount.findFirst({
+      return this.prisma.externalShippingAccount.findFirst({
         where: { facebookPageId: order.facebookPageId, isActive: true },
       });
-      if (byPage) return byPage;
     }
 
     if (order.pagePublicCode != null) {
@@ -47,27 +52,20 @@ export class OrderFulfillmentService {
       if (page?.shippingAccount?.isActive) return page.shippingAccount;
     }
 
-    const identifier = (order.pageSource || '').trim();
-    if (identifier) {
-      const byId = await this.prisma.externalShippingAccount.findFirst({
-        where: {
-          isActive: true,
-          OR: [
-            { pageIdentifier: identifier },
-            { label: identifier },
-            { facebookPage: { name: identifier } },
-          ],
-        },
-      });
-      if (byId) return byId;
-    }
+    // Non-page / legacy orders: no cross-page account guessing.
+    return null;
+  }
 
-    // Fallback: أي حساب شحن نشط محفوظ من الواجهة (عند عدم ربط الصفحة بالطلب)
-    const anyActive = await this.prisma.externalShippingAccount.findFirst({
-      where: { isActive: true },
-      orderBy: { updatedAt: 'desc' },
-    });
-    return anyActive;
+  /** Block EXTERNAL shipment when the order's Facebook page has no linked account. */
+  requirePageShippingAccount(
+    order: { facebookPageId?: string | null; pagePublicCode?: number | null },
+    account: { id: string } | null | undefined,
+  ) {
+    const isPageOrder =
+      Boolean(order.facebookPageId) || order.pagePublicCode != null;
+    if (isPageOrder && !account) {
+      throw new BadRequestException(PAGE_SHIPPING_ACCOUNT_REQUIRED);
+    }
   }
 
   /**
@@ -118,6 +116,8 @@ export class OrderFulfillmentService {
       pagePublicCode: order.pagePublicCode,
       pageSource,
     });
+
+    this.requirePageShippingAccount(order, account);
 
     if (!account && !this.accuratess.isConfigured(null)) {
       this.logger.warn(

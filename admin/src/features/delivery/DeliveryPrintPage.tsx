@@ -79,13 +79,30 @@ export function DeliveryPrintPage() {
     [params],
   );
   const pageId = params.get('pageId') || '';
+  const from = params.get('from') || '';
+  const to = params.get('to') || '';
+  const readyOnly = params.get('readyOnly') === '1';
+  const hasShipment = params.get('hasShipment') === '1';
   const [slips, setSlips] = useState<Slip[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const body: { ids?: string[]; orderIds?: string[]; facebookPageId?: string } = {};
-    if (pageId) body.facebookPageId = pageId;
-    else if (orderIds.length) body.orderIds = orderIds;
+    const body: {
+      ids?: string[];
+      orderIds?: string[];
+      facebookPageId?: string;
+      from?: string;
+      to?: string;
+      readyOnly?: boolean;
+      hasShipment?: boolean;
+    } = {};
+    if (pageId) {
+      body.facebookPageId = pageId;
+      if (from) body.from = from;
+      if (to) body.to = to;
+      if (readyOnly) body.readyOnly = true;
+      if (hasShipment) body.hasShipment = true;
+    } else if (orderIds.length) body.orderIds = orderIds;
     else if (ids.length) body.ids = ids;
     else {
       setError('لا توجد بوليصات للطباعة');
@@ -100,7 +117,7 @@ export function DeliveryPrintPage() {
         setTimeout(() => window.print(), 400);
       })
       .catch((e) => setError(e.message));
-  }, [ids.join(','), orderIds.join(','), pageId]);
+  }, [ids.join(','), orderIds.join(','), pageId, from, to, readyOnly, hasShipment]);
 
   if (error) return <div className="login-page">{error}</div>;
   if (!slips.length) return <div className="login-page">جارٍ تحميل البوليصات...</div>;

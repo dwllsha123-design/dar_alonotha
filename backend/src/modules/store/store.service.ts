@@ -27,6 +27,7 @@ import { OrderFulfillmentService } from '../delivery/order-fulfillment.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthService } from '../auth/auth.service';
 import { SessionMeta } from '../../common/client-context';
+import { assertFacebookPageAcceptsNewOrders } from '../../common/order-access';
 
 type PublicProduct = {
   id: string;
@@ -764,8 +765,14 @@ export class StoreService {
     if (dto.attributionToken) {
       const visit = await this.prisma.referralVisit.findUnique({
         where: { attributionToken: dto.attributionToken },
+        include: { page: { select: { id: true, status: true, publicCode: true } } },
       });
       if (visit && visit.expiresAt > new Date()) {
+        if (visit.page.status !== 'ACTIVE') {
+          throw new BadRequestException(
+            'هذه الصفحة متوقفة ولا يمكن إنشاء طلبات جديدة عليها',
+          );
+        }
         facebookPageId = visit.pageId;
         pagePublicCode = visit.pageCode;
         agentPublicCode = visit.agentCode ?? undefined;
@@ -777,29 +784,41 @@ export class StoreService {
     }
 
     // ربط مباشر برمز الصفحة من الرابط ?page= حتى بدون token
+    // Resolve page from publicCode only — never trust a client facebookPageId.
     if (!facebookPageId && dto.pagePublicCode) {
       const page = await this.prisma.facebookPage.findFirst({
-        where: { publicCode: dto.pagePublicCode, status: 'ACTIVE' },
+        where: { publicCode: dto.pagePublicCode },
       });
-      if (page) {
-        facebookPageId = page.id;
-        pagePublicCode = page.publicCode;
-        attributionSource = attributionSource === 'WEBSITE' ? 'STORE_PAGE_LINK' : attributionSource;
-        if (dto.agentPublicCode) {
-          const member = await this.prisma.facebookPageEmployee.findFirst({
-            where: {
-              pageId: page.id,
-              agentCode: dto.agentPublicCode,
-              role: 'AGENT',
-            },
-          });
-          if (member) {
-            agentPublicCode = member.agentCode ?? undefined;
-            salesAgentId = member.userId;
-            attributionSource = 'STORE_AGENT_LINK';
-          }
+      if (!page) {
+        throw new BadRequestException('رابط متجر الصفحة غير صالح');
+      }
+      if (page.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          'هذه الصفحة متوقفة ولا يمكن إنشاء طلبات جديدة عليها',
+        );
+      }
+      facebookPageId = page.id;
+      pagePublicCode = page.publicCode;
+      attributionSource =
+        attributionSource === 'WEBSITE' ? 'STORE_PAGE_LINK' : attributionSource;
+      if (dto.agentPublicCode) {
+        const member = await this.prisma.facebookPageEmployee.findFirst({
+          where: {
+            pageId: page.id,
+            agentCode: dto.agentPublicCode,
+            role: 'AGENT',
+          },
+        });
+        if (member) {
+          agentPublicCode = member.agentCode ?? undefined;
+          salesAgentId = member.userId;
+          attributionSource = 'STORE_AGENT_LINK';
         }
       }
+    }
+
+    if (facebookPageId) {
+      await assertFacebookPageAcceptsNewOrders(this.prisma, facebookPageId);
     }
 
     return this.inventory.withTransaction(async (tx) => {

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -29,6 +30,7 @@ import {
 } from '../../common/delivery/delivery-zones';
 import { StoreService } from '../store/store.service';
 import { AccuratessService } from './accuratess.service';
+import { OrderFulfillmentService } from './order-fulfillment.service';
 import {
   asAccuratessShipmentId,
   asAccuratessTrackingCode,
@@ -53,6 +55,7 @@ export class DeliveryService {
     private readonly prisma: PrismaService,
     private readonly storeService: StoreService,
     private readonly accuratess: AccuratessService,
+    private readonly fulfillment: OrderFulfillmentService,
     private readonly inventory: CentralInventoryService,
     private readonly notifications: NotificationsService,
     private readonly commissions: CommissionsService,
@@ -386,28 +389,12 @@ export class DeliveryService {
         };
       }
 
-      let account = await this.prisma.externalShippingAccount.findFirst({
-        where: {
-          isActive: true,
-          OR: [
-            ...(order.facebookPageId
-              ? [{ facebookPageId: order.facebookPageId }]
-              : []),
-            ...(order.pageSource
-              ? [
-                  { pageIdentifier: order.pageSource },
-                  { label: order.pageSource },
-                ]
-              : []),
-          ],
-        },
+      let account = await this.fulfillment.resolvePageAccount({
+        facebookPageId: order.facebookPageId,
+        pagePublicCode: order.pagePublicCode,
+        pageSource: order.pageSource || order.facebookPage?.name || null,
       });
-      if (!account) {
-        account = await this.prisma.externalShippingAccount.findFirst({
-          where: { isActive: true },
-          orderBy: { updatedAt: 'desc' },
-        });
-      }
+      this.fulfillment.requirePageShippingAccount(order, account);
       const accountCreds = account
         ? {
             apiToken: account.apiToken,
@@ -910,12 +897,64 @@ export class DeliveryService {
     if (dto.facebookPageId) {
       await assertCanUseFacebookPage(this.prisma, user, dto.facebookPageId);
       const scope = await this.orderScope(user);
+
+      const fromDate = dto.from ? new Date(dto.from) : undefined;
+      const toDate = dto.to ? new Date(dto.to) : undefined;
+      if (fromDate && Number.isNaN(fromDate.getTime())) {
+        throw new BadRequestException('تاريخ البداية غير صالح');
+      }
+      if (toDate && Number.isNaN(toDate.getTime())) {
+        throw new BadRequestException('تاريخ النهاية غير صالح');
+      }
+      if (toDate) {
+        toDate.setHours(23, 59, 59, 999);
+      }
+
+      const readyStatuses = ['NEW', 'CONFIRMED', 'PREPARING', 'READY'] as const;
+      const where: Prisma.OrderWhereInput = {
+        facebookPageId: dto.facebookPageId,
+        status: dto.readyOnly
+          ? { in: [...readyStatuses] }
+          : { notIn: ['CANCELLED', 'DRAFT'] },
+        ...(fromDate || toDate
+          ? {
+              createdAt: {
+                ...(fromDate ? { gte: fromDate } : {}),
+                ...(toDate ? { lte: toDate } : {}),
+              },
+            }
+          : {}),
+        ...(dto.hasShipment
+          ? {
+              OR: [
+                { externalTrackingNumber: { not: null } },
+                { deliveries: { some: { trackingNumber: { not: null } } } },
+              ],
+            }
+          : {}),
+        ...(scope || {}),
+      };
+
+      // If explicit orderIds are provided with a page filter, only allow that page's orders.
+      if (dto.orderIds?.length) {
+        const owned = await this.prisma.order.findMany({
+          where: {
+            id: { in: dto.orderIds },
+            facebookPageId: dto.facebookPageId,
+            ...(scope || {}),
+          },
+          select: { id: true },
+        });
+        if (owned.length !== dto.orderIds.length) {
+          throw new ForbiddenException(
+            'لا يمكن طباعة طلبات لا تنتمي لهذه الصفحة',
+          );
+        }
+        where.id = { in: owned.map((o) => o.id) };
+      }
+
       const orders = await this.prisma.order.findMany({
-        where: {
-          facebookPageId: dto.facebookPageId,
-          status: { notIn: ['CANCELLED', 'DRAFT'] },
-          ...(scope || {}),
-        },
+        where,
         select: { id: true },
         orderBy: { createdAt: 'desc' },
         take: 200,

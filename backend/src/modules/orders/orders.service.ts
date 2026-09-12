@@ -22,6 +22,7 @@ import { resolveVariantImageUrl } from '../../common/variant-image';
 import {
   assertCanAccessOrder,
   assertCanUseFacebookPage,
+  assertFacebookPageAcceptsNewOrders,
   getAssignedFacebookPageIds,
   isPageScopedAgent,
   pageAgentOrderScope,
@@ -244,6 +245,9 @@ export class OrdersService {
     }
 
     await assertCanUseFacebookPage(this.prisma, user, facebookPageId);
+    if (facebookPageId) {
+      await assertFacebookPageAcceptsNewOrders(this.prisma, facebookPageId);
+    }
 
     const secondaryPhone =
       dto.customerPhone2?.trim() || dto.shippingPhone2?.trim() || '';

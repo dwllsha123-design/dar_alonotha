@@ -23,6 +23,29 @@ type PageMeta = {
   status: string;
   publicCode?: number;
   notes?: string | null;
+  storefrontUrl?: string;
+  shortUrl?: string;
+  referralLink?: string;
+  _count?: { orders: number };
+  shippingAccount?: {
+    id: string;
+    label?: string | null;
+    hasToken?: boolean;
+    isActive?: boolean;
+  } | null;
+  employees?: Array<{
+    userId: string;
+    role: string;
+    user: { id: string; name: string };
+  }>;
+};
+
+type ShippingAccountOption = {
+  id: string;
+  label: string;
+  pageName: string;
+  pagePublicCode: number;
+  facebookPageId: string;
 };
 
 type Dashboard = {
@@ -199,6 +222,15 @@ export function FacebookPageDetailPage() {
   });
 
   const [settings, setSettings] = useState({ name: '', notes: '', status: 'ACTIVE' });
+  const [shipAccounts, setShipAccounts] = useState<ShippingAccountOption[]>([]);
+  const [shipSelect, setShipSelect] = useState('');
+  const [shipToken, setShipToken] = useState('');
+  const [shipLabel, setShipLabel] = useState('');
+  const [copied, setCopied] = useState('');
+  const [printPreset, setPrintPreset] = useState<'today' | 'range' | 'ready' | 'shipped'>('today');
+  const [printFrom, setPrintFrom] = useState('');
+  const [printTo, setPrintTo] = useState('');
+  const [printBusy, setPrintBusy] = useState(false);
 
   function setTab(next: Tab) {
     setSearchParams(next === 'overview' ? {} : { tab: next });
@@ -212,7 +244,15 @@ export function FacebookPageDetailPage() {
       notes: p.notes || '',
       status: p.status || 'ACTIVE',
     });
+    setShipSelect(p.shippingAccount?.id || '');
+    setShipLabel(p.shippingAccount?.label || p.name || '');
+    setShipToken('');
   }, [id]);
+
+  const loadShippingAccounts = useCallback(async () => {
+    const list = await api<ShippingAccountOption[]>('/facebook-pages/shipping-accounts');
+    setShipAccounts(list);
+  }, []);
 
   const loadDashboard = useCallback(async () => {
     const data = await api<Dashboard>(`/facebook-pages/${id}/dashboard`);
@@ -249,6 +289,11 @@ export function FacebookPageDetailPage() {
     setError('');
     loadPage().catch((e) => setError(e.message));
   }, [loadPage]);
+
+  useEffect(() => {
+    if (tab !== 'settings') return;
+    loadShippingAccounts().catch(() => setShipAccounts([]));
+  }, [tab, loadShippingAccounts]);
 
   useEffect(() => {
     if (!id) return;
@@ -482,8 +527,9 @@ export function FacebookPageDetailPage() {
           status: settings.status,
         }),
       });
-      setPage(updated);
+      setPage((prev) => ({ ...prev, ...updated }));
       setMsg('تم حفظ إعدادات الصفحة');
+      await loadPage();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل الحفظ');
     } finally {
@@ -491,6 +537,109 @@ export function FacebookPageDetailPage() {
     }
   }
 
+  async function copyText(label: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(''), 2000);
+    } catch {
+      setError('تعذّر نسخ الرابط');
+    }
+  }
+
+  async function saveShippingLink() {
+    setBusy(true);
+    setError('');
+    try {
+      if (!shipSelect) {
+        await api(`/facebook-pages/${id}/shipping-account/link`, {
+          method: 'PUT',
+          body: JSON.stringify({ shippingAccountId: null }),
+        });
+        setMsg('تم إزالة ربط حساب المعيار');
+      } else if (shipSelect === '__new__') {
+        if (!shipToken.trim()) {
+          setError('أدخلي مفتاح حساب المعيار أو اختاري حساباً موجوداً');
+          setBusy(false);
+          return;
+        }
+        await api(`/facebook-pages/${id}/shipping-account`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            apiToken: shipToken.trim(),
+            label: shipLabel || settings.name,
+            pageIdentifier: shipLabel || settings.name,
+            isActive: true,
+          }),
+        });
+        setMsg('تم حفظ حساب المعيار لهذه الصفحة');
+        setShipToken('');
+      } else {
+        await api(`/facebook-pages/${id}/shipping-account/link`, {
+          method: 'PUT',
+          body: JSON.stringify({ shippingAccountId: shipSelect }),
+        });
+        setMsg('تم ربط حساب المعيار بالصفحة');
+      }
+      await loadPage();
+      await loadShippingAccounts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل حفظ حساب الشحن');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePage() {
+    if (!confirm('حذف الصفحة نهائياً؟ هذا متاح فقط إن لم تكن هناك طلبات.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/facebook-pages/${id}`, { method: 'DELETE' });
+      window.location.href = '/facebook-pages';
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'لا يمكن حذف الصفحة لوجود طلبات مرتبطة بها. يمكنك إيقاف الصفحة بدلاً من حذفها.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function buildPrintQuery() {
+    const qs = new URLSearchParams({ pageId: id });
+    if (printPreset === 'today') {
+      const d = new Date().toISOString().slice(0, 10);
+      qs.set('from', d);
+      qs.set('to', d);
+    } else if (printPreset === 'range') {
+      if (printFrom) qs.set('from', printFrom);
+      if (printTo) qs.set('to', printTo);
+    } else if (printPreset === 'ready') {
+      qs.set('readyOnly', '1');
+    } else if (printPreset === 'shipped') {
+      qs.set('hasShipment', '1');
+    }
+    return qs;
+  }
+
+  async function printPageSlips() {
+    setPrintBusy(true);
+    setError('');
+    try {
+      window.open(`/delivery/print?${buildPrintQuery().toString()}`, '_blank');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل فتح الطباعة');
+    } finally {
+      setPrintBusy(false);
+    }
+  }
+
+  const storefrontUrl =
+    page?.storefrontUrl ||
+    (page?.publicCode != null ? `/?page=${page.publicCode}` : '');
   const title = page?.name || dashboard?.page.name || 'صفحة فيسبوك';
   const status = page?.status || dashboard?.page.status || '';
 
@@ -547,7 +696,87 @@ export function FacebookPageDetailPage() {
       </div>
 
       {tab === 'overview' ? (
-        <OverviewTab dashboard={dashboard} />
+        <div className="stack">
+          <div className="panel stack">
+            <strong>رابط متجر الصفحة</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              أي طلب من هذا الرابط يُنسب تلقائياً لهذه الصفحة — الزبون لا يختار الصفحة يدوياً.
+            </p>
+            <code style={{ wordBreak: 'break-all' }}>{storefrontUrl || '—'}</code>
+            <div className="toolbar" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={!storefrontUrl}
+                onClick={() => storefrontUrl && copyText('store', storefrontUrl)}
+              >
+                {copied === 'store' ? 'تم النسخ' : 'نسخ الرابط'}
+              </button>
+              <a
+                className="btn sm secondary"
+                href={storefrontUrl || '#'}
+                target="_blank"
+                rel="noreferrer"
+                aria-disabled={!storefrontUrl}
+              >
+                فتح المتجر
+              </a>
+            </div>
+          </div>
+
+          <div className="panel stack">
+            <strong>طباعة البوليصات</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              طباعة بوليصات طلبات هذه الصفحة فقط عبر نظام الشحن الحالي.
+            </p>
+            <div className="form-grid two">
+              <label>
+                التصفية
+                <select
+                  value={printPreset}
+                  onChange={(e) =>
+                    setPrintPreset(e.target.value as typeof printPreset)
+                  }
+                >
+                  <option value="today">اليوم</option>
+                  <option value="range">تاريخ محدد / نطاق</option>
+                  <option value="ready">جاهزة للشحن</option>
+                  <option value="shipped">تم إنشاء شحنة لها</option>
+                </select>
+              </label>
+              {printPreset === 'range' ? (
+                <>
+                  <label>
+                    من
+                    <input
+                      type="date"
+                      value={printFrom}
+                      onChange={(e) => setPrintFrom(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    إلى
+                    <input
+                      type="date"
+                      value={printTo}
+                      onChange={(e) => setPrintTo(e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="btn"
+              disabled={printBusy}
+              onClick={() => printPageSlips()}
+            >
+              طباعة البوليصات
+            </button>
+          </div>
+
+          <OverviewTab dashboard={dashboard} />
+        </div>
       ) : null}
 
       {tab === 'employees' ? (
@@ -1147,45 +1376,165 @@ export function FacebookPageDetailPage() {
       ) : null}
 
       {tab === 'settings' ? (
-        <form className="panel stack" onSubmit={saveSettings}>
-          <strong>إعدادات الصفحة</strong>
-          <div className="form-grid two">
-            <label>
-              اسم الصفحة *
-              <input
-                value={settings.name}
-                onChange={(e) => setSettings({ ...settings, name: e.target.value })}
-                required
-              />
-            </label>
-            <label>
-              الحالة
-              <select
-                value={settings.status}
-                onChange={(e) => setSettings({ ...settings, status: e.target.value })}
+        <div className="stack">
+          <form className="panel stack" onSubmit={saveSettings}>
+            <strong>إعدادات الصفحة</strong>
+            <div className="form-grid two">
+              <label>
+                اسم الصفحة *
+                <input
+                  value={settings.name}
+                  onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+                  required
+                />
+              </label>
+              <label>
+                الحالة
+                <select
+                  value={settings.status}
+                  onChange={(e) => setSettings({ ...settings, status: e.target.value })}
+                >
+                  <option value="ACTIVE">ACTIVE — مفعّلة</option>
+                  <option value="INACTIVE">INACTIVE — متوقفة</option>
+                </select>
+              </label>
+              <label style={{ gridColumn: '1 / -1' }}>
+                ملاحظات
+                <textarea
+                  rows={3}
+                  value={settings.notes}
+                  onChange={(e) => setSettings({ ...settings, notes: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="toolbar">
+              <button className="btn" type="submit" disabled={busy}>
+                حفظ
+              </button>
+              <Link className="btn secondary" to={`/facebook-pages/${id}/edit`}>
+                صفحة التعديل الكاملة
+              </Link>
+            </div>
+          </form>
+
+          <div className="panel stack">
+            <strong>رابط متجر الصفحة</strong>
+            <code style={{ wordBreak: 'break-all' }}>{storefrontUrl || '—'}</code>
+            <div className="toolbar" style={{ gap: 8 }}>
+              <button
+                type="button"
+                className="btn sm"
+                disabled={!storefrontUrl}
+                onClick={() => storefrontUrl && copyText('settings-store', storefrontUrl)}
               >
-                <option value="ACTIVE">ACTIVE — مفعّلة</option>
-                <option value="INACTIVE">INACTIVE — متوقفة</option>
+                {copied === 'settings-store' ? 'تم النسخ' : 'نسخ الرابط'}
+              </button>
+              <a
+                className="btn sm secondary"
+                href={storefrontUrl || '#'}
+                target="_blank"
+                rel="noreferrer"
+              >
+                فتح المتجر
+              </a>
+            </div>
+            {page?.publicCode != null ? (
+              <p className="muted" style={{ margin: 0 }}>
+                المعرّف العام: #{page.publicCode}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="panel stack">
+            <strong>حساب الشحن – المعيار</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              عند شحن طلبات هذه الصفحة خارجياً يُستخدم هذا الحساب تلقائياً. لا تُعرض المفاتيح السرية كاملة.
+            </p>
+            <label>
+              الحساب المرتبط
+              <select
+                value={shipSelect}
+                onChange={(e) => setShipSelect(e.target.value)}
+              >
+                <option value="">بدون حساب محدد</option>
+                {shipAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                    {a.facebookPageId === id ? ' (هذه الصفحة)' : ` — ${a.pageName}`}
+                  </option>
+                ))}
+                <option value="__new__">إدخال مفتاح جديد…</option>
               </select>
             </label>
-            <label style={{ gridColumn: '1 / -1' }}>
-              ملاحظات
-              <textarea
-                rows={4}
-                value={settings.notes}
-                onChange={(e) => setSettings({ ...settings, notes: e.target.value })}
-              />
-            </label>
-          </div>
-          <div className="toolbar">
-            <button className="btn" type="submit" disabled={busy}>
-              حفظ
+            {shipSelect === '__new__' ? (
+              <div className="form-grid two">
+                <label>
+                  اسم الحساب (للعرض)
+                  <input
+                    value={shipLabel}
+                    onChange={(e) => setShipLabel(e.target.value)}
+                    placeholder={settings.name}
+                  />
+                </label>
+                <label>
+                  مفتاح API
+                  <input
+                    type="password"
+                    value={shipToken}
+                    onChange={(e) => setShipToken(e.target.value)}
+                    placeholder="الصق مفتاح المعيار"
+                    autoComplete="off"
+                  />
+                </label>
+              </div>
+            ) : null}
+            {page?.shippingAccount?.hasToken ? (
+              <p className="muted" style={{ margin: 0 }}>
+                الحالي: {page.shippingAccount.label || 'حساب مربوط'} ✓
+              </p>
+            ) : (
+              <p className="muted" style={{ margin: 0 }}>غير مربوط</p>
+            )}
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => saveShippingLink()}
+            >
+              حفظ حساب الشحن
             </button>
-            <Link className="btn secondary" to={`/facebook-pages/${id}/edit`}>
-              صفحة التعديل الكاملة
-            </Link>
           </div>
-        </form>
+
+          <div className="panel stack">
+            <strong>الموظفات</strong>
+            {!page?.employees?.length ? (
+              <p className="muted">لا موظفات — أديري التعيين من تبويب الموظفات.</p>
+            ) : (
+              <ul style={{ margin: 0, paddingInlineStart: 18 }}>
+                {page.employees.map((e) => (
+                  <li key={e.userId}>
+                    <Link to={`/facebook-page-employees/${e.userId}`}>{e.user.name}</Link>
+                    {' · '}
+                    {PAGE_ROLE_LABEL[e.role] || e.role}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" className="btn secondary sm" onClick={() => setTab('employees')}>
+              إدارة الموظفات
+            </button>
+          </div>
+
+          <div className="panel stack">
+            <strong>حذف الصفحة</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              الحذف النهائي متاح فقط إن لم توجد طلبات. إن وُجدت طلبات استخدمي إيقاف الصفحة.
+            </p>
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => deletePage()}>
+              حذف الصفحة
+            </button>
+          </div>
+        </div>
       ) : null}
     </div>
   );

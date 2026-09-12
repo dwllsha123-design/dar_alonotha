@@ -17,6 +17,7 @@ import {
   AssignMemberDto,
   CreateFacebookPageDto,
   CreatePageStaffDto,
+  LinkShippingAccountDto,
   UpdateFacebookPageDto,
   UpdateMemberEmploymentDto,
   UpsertShippingAccountDto,
@@ -49,6 +50,13 @@ export class FacebookPagesController {
   @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
   summary() {
     return this.analytics.listSummaries();
+  }
+
+  /** List Al-Meyar accounts (labels only — no secrets) for page settings dropdown. */
+  @Get('shipping-accounts')
+  @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
+  listShippingAccounts() {
+    return this.facebookPagesService.listShippingAccounts();
   }
 
   @Get(':id/dashboard')
@@ -158,6 +166,15 @@ export class FacebookPagesController {
     @Body() dto: UpsertShippingAccountDto,
   ) {
     return this.facebookPagesService.upsertShippingAccount(id, dto);
+  }
+
+  @Put(':id/shipping-account/link')
+  @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
+  linkShippingAccount(
+    @Param('id') id: string,
+    @Body() dto: LinkShippingAccountDto,
+  ) {
+    return this.facebookPagesService.linkShippingAccount(id, dto);
   }
 
   @Delete(':id/shipping-account')

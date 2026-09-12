@@ -1,8 +1,36 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from './decorators/current-user.decorator';
 import { ROLE_CODES } from './permissions';
+
+/** Shown when an EXTERNAL page shipment has no linked Al-Meyar account. */
+export const PAGE_SHIPPING_ACCOUNT_REQUIRED =
+  'لم يتم ربط حساب المعيار بهذه الصفحة.';
+
+/**
+ * New orders may only be attributed to ACTIVE Facebook pages.
+ * Historical orders remain readable; this blocks create/checkout only.
+ */
+export async function assertFacebookPageAcceptsNewOrders(
+  prisma: PrismaService,
+  facebookPageId: string,
+): Promise<void> {
+  const page = await prisma.facebookPage.findUnique({
+    where: { id: facebookPageId },
+    select: { id: true, status: true },
+  });
+  if (!page) throw new NotFoundException('الصفحة غير موجودة');
+  if (page.status !== 'ACTIVE') {
+    throw new BadRequestException(
+      'هذه الصفحة متوقفة ولا يمكن إنشاء طلبات جديدة عليها',
+    );
+  }
+}
 
 /** Full order visibility (admins). */
 export function isOrderAdmin(user: AuthUser): boolean {

@@ -10,6 +10,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { FacebookPageStatus, PageMemberRole } from '@prisma/client';
 
@@ -79,8 +80,15 @@ export class UpsertShippingAccountDto {
   @IsString()
   pageIdentifier?: string;
 
+  /** Required when creating a new account; optional when updating / linking. */
+  @IsOptional()
   @IsString()
-  apiToken!: string;
+  apiToken?: string;
+
+  /** Copy credentials from an existing account (same provider config). */
+  @IsOptional()
+  @IsString()
+  sourceAccountId?: string;
 
   @IsOptional()
   @IsString()
@@ -101,6 +109,13 @@ export class UpsertShippingAccountDto {
   @IsOptional()
   @IsString()
   notes?: string;
+}
+
+/** Select existing Al-Meyar account for a page, or clear (`shippingAccountId: null`). */
+export class LinkShippingAccountDto {
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  shippingAccountId?: string | null;
 }
 
 export class AssignMemberDto {

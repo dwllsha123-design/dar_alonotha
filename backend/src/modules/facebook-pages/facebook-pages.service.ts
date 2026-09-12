@@ -15,10 +15,56 @@ import {
   SetPageCredentialsDto,
   UpdateFacebookPageDto,
   UpsertShippingAccountDto,
+  LinkShippingAccountDto,
 } from './dto/facebook-page.dto';
 import * as bcrypt from 'bcrypt';
 import { ROLE_CODES } from '../../common/permissions';
 import { assertCanUseFacebookPage } from '../../common/order-access';
+
+const SHIPPING_ACCOUNT_PUBLIC_SELECT = {
+  id: true,
+  label: true,
+  pageIdentifier: true,
+  endpoint: true,
+  senderZoneId: true,
+  senderSubzoneId: true,
+  isActive: true,
+  notes: true,
+  updatedAt: true,
+  apiToken: true,
+} as const;
+
+function maskShippingAccount(
+  account: {
+    id: string;
+    label: string | null;
+    pageIdentifier: string | null;
+    endpoint: string | null;
+    senderZoneId: string | null;
+    senderSubzoneId: string | null;
+    isActive: boolean;
+    notes: string | null;
+    updatedAt: Date;
+    apiToken: string;
+  } | null | undefined,
+) {
+  if (!account) return null;
+  const token = account.apiToken;
+  return {
+    id: account.id,
+    label: account.label,
+    pageIdentifier: account.pageIdentifier,
+    endpoint: account.endpoint,
+    senderZoneId: account.senderZoneId,
+    senderSubzoneId: account.senderSubzoneId,
+    isActive: account.isActive,
+    notes: account.notes,
+    updatedAt: account.updatedAt,
+    hasToken: Boolean(token),
+    /** Masked preview for admins only — never full secret */
+    apiToken: token ? `${token.slice(0, 4)}…${token.slice(-4)}` : null,
+  };
+}
 
 @Injectable()
 export class FacebookPagesService {
@@ -131,6 +177,7 @@ export class FacebookPagesService {
             user: { select: { id: true, name: true, phone: true, email: true } },
           },
         },
+        shippingAccount: { select: SHIPPING_ACCOUNT_PUBLIC_SELECT },
         orders: {
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -144,24 +191,36 @@ export class FacebookPagesService {
             createdAt: true,
           },
         },
+        _count: { select: { orders: true } },
       },
     });
     if (!page) throw new NotFoundException('الصفحة غير موجودة');
 
     const isAdmin =
       user.roles.includes('super_admin') || user.roles.includes('admin');
+    const shippingAccount = isAdmin
+      ? maskShippingAccount(page.shippingAccount)
+      : page.shippingAccount
+        ? {
+            id: page.shippingAccount.id,
+            label: page.shippingAccount.label,
+            hasToken: Boolean(page.shippingAccount.apiToken),
+            isActive: page.shippingAccount.isActive,
+          }
+        : null;
+
     const safe = isAdmin
       ? page
       : {
           ...page,
           username: undefined,
           passwordHash: undefined,
-          shippingAccount: undefined,
           employees: page.employees.filter((e) => e.userId === user.id),
         };
 
     return {
       ...safe,
+      shippingAccount,
       ...this.linksFor(page.publicCode),
       agents: isAdmin
         ? page.employees
@@ -524,16 +583,111 @@ export class FacebookPagesService {
     if (!page) throw new NotFoundException('الصفحة غير موجودة');
     if (page._count.orders > 0) {
       throw new BadRequestException(
-        'لا يمكن حذف صفحة لها طلبات مسجّلة. أوقفيها حتى لا تُستخدم في روابط جديدة.',
+        'لا يمكن حذف الصفحة لوجود طلبات مرتبطة بها. يمكنك إيقاف الصفحة بدلاً من حذفها.',
       );
     }
     await this.prisma.facebookPage.delete({ where: { id } });
     return { ok: true };
   }
 
-  async upsertShippingAccount(pageId: string, dto: UpsertShippingAccountDto) {
-    const page = await this.prisma.facebookPage.findUnique({ where: { id: pageId } });
+  async listShippingAccounts() {
+    const rows = await this.prisma.externalShippingAccount.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        label: true,
+        pageIdentifier: true,
+        isActive: true,
+        facebookPageId: true,
+        facebookPage: { select: { id: true, name: true, publicCode: true } },
+      },
+      orderBy: { label: 'asc' },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      label: r.label || r.facebookPage.name,
+      pageIdentifier: r.pageIdentifier,
+      isActive: r.isActive,
+      facebookPageId: r.facebookPageId,
+      pageName: r.facebookPage.name,
+      pagePublicCode: r.facebookPage.publicCode,
+    }));
+  }
+
+  async linkShippingAccount(pageId: string, dto: LinkShippingAccountDto) {
+    const page = await this.prisma.facebookPage.findUnique({
+      where: { id: pageId },
+    });
     if (!page) throw new NotFoundException('الصفحة غير موجودة');
+
+    if (!dto.shippingAccountId) {
+      await this.prisma.externalShippingAccount.deleteMany({
+        where: { facebookPageId: pageId },
+      });
+      return { ok: true, shippingAccount: null };
+    }
+
+    const source = await this.prisma.externalShippingAccount.findUnique({
+      where: { id: dto.shippingAccountId },
+    });
+    if (!source || !source.isActive) {
+      throw new BadRequestException('حساب الشحن غير موجود أو غير نشط');
+    }
+
+    // Same page already linked to this row
+    if (source.facebookPageId === pageId) {
+      return maskShippingAccount(source);
+    }
+
+    // Clone credentials onto this page (1:1 ownership stays unique; never steal).
+    const saved = await this.prisma.externalShippingAccount.upsert({
+      where: { facebookPageId: pageId },
+      create: {
+        facebookPageId: pageId,
+        label: source.label || page.name,
+        pageIdentifier: source.pageIdentifier || page.name,
+        apiToken: source.apiToken,
+        endpoint: source.endpoint,
+        senderZoneId: source.senderZoneId,
+        senderSubzoneId: source.senderSubzoneId,
+        isActive: true,
+        notes: source.notes,
+        provider: source.provider,
+      },
+      update: {
+        label: source.label || page.name,
+        pageIdentifier: source.pageIdentifier || page.name,
+        apiToken: source.apiToken,
+        endpoint: source.endpoint,
+        senderZoneId: source.senderZoneId,
+        senderSubzoneId: source.senderSubzoneId,
+        isActive: true,
+        notes: source.notes,
+        provider: source.provider,
+      },
+    });
+    return maskShippingAccount(saved);
+  }
+
+  async upsertShippingAccount(pageId: string, dto: UpsertShippingAccountDto) {
+    const page = await this.prisma.facebookPage.findUnique({
+      where: { id: pageId },
+    });
+    if (!page) throw new NotFoundException('الصفحة غير موجودة');
+
+    if (dto.sourceAccountId) {
+      return this.linkShippingAccount(pageId, {
+        shippingAccountId: dto.sourceAccountId,
+      });
+    }
+
+    const existing = await this.prisma.externalShippingAccount.findUnique({
+      where: { facebookPageId: pageId },
+    });
+    const apiToken = dto.apiToken?.trim() || existing?.apiToken;
+    if (!apiToken) {
+      throw new BadRequestException('مفتاح حساب المعيار مطلوب');
+    }
 
     const saved = await this.prisma.externalShippingAccount.upsert({
       where: { facebookPageId: pageId },
@@ -541,7 +695,7 @@ export class FacebookPagesService {
         facebookPageId: pageId,
         label: dto.label || page.name,
         pageIdentifier: dto.pageIdentifier || page.name,
-        apiToken: dto.apiToken,
+        apiToken,
         endpoint: dto.endpoint,
         senderZoneId: dto.senderZoneId,
         senderSubzoneId: dto.senderSubzoneId,
@@ -551,20 +705,16 @@ export class FacebookPagesService {
       update: {
         label: dto.label || page.name,
         pageIdentifier: dto.pageIdentifier || page.name,
-        apiToken: dto.apiToken,
-        endpoint: dto.endpoint,
-        senderZoneId: dto.senderZoneId,
-        senderSubzoneId: dto.senderSubzoneId,
+        apiToken,
+        endpoint: dto.endpoint ?? existing?.endpoint,
+        senderZoneId: dto.senderZoneId ?? existing?.senderZoneId,
+        senderSubzoneId: dto.senderSubzoneId ?? existing?.senderSubzoneId,
         isActive: dto.isActive ?? true,
-        notes: dto.notes,
+        notes: dto.notes ?? existing?.notes,
       },
     });
 
-    return {
-      ...saved,
-      apiToken: `${saved.apiToken.slice(0, 4)}…${saved.apiToken.slice(-4)}`,
-      hasToken: true,
-    };
+    return maskShippingAccount(saved);
   }
 
   async removeShippingAccount(pageId: string) {
