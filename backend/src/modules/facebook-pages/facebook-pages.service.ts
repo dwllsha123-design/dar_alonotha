@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   AssignMemberDto,
   CreateFacebookPageDto,
+  CreatePageStaffDto,
   SetPageCredentialsDto,
   UpdateFacebookPageDto,
   UpsertShippingAccountDto,
@@ -190,13 +191,21 @@ export class FacebookPagesService {
     const publicCode =
       dto.publicCode ?? (await this.codes.nextCode('page_public_code', 1025));
 
+    const notes = [
+      dto.notes?.trim(),
+      dto.internalLabel?.trim() ? `تعريفي: ${dto.internalLabel.trim()}` : '',
+      dto.facebookUrl?.trim() ? `رابط فيسبوك: ${dto.facebookUrl.trim()}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n') || undefined;
+
     return this.prisma.facebookPage.create({
       data: {
         name: dto.name,
         publicCode,
         pageId: dto.pageId,
         managerId: dto.managerId,
-        notes: dto.notes,
+        notes,
       },
     });
   }
@@ -256,6 +265,175 @@ export class FacebookPagesService {
     });
 
     return this.adminFindOne(pageId);
+  }
+
+  /**
+   * Create a sales_agent user and assign to this page (admin page-management flow).
+   * Does not grant system ADMIN — only sales_agent + page role.
+   */
+  async createStaff(pageId: string, dto: CreatePageStaffDto) {
+    const page = await this.prisma.facebookPage.findUnique({ where: { id: pageId } });
+    if (!page) throw new NotFoundException('الصفحة غير موجودة');
+    if (!dto.phone && !dto.email) {
+      throw new BadRequestException('أدخلي هاتفاً أو بريداً للموظفة');
+    }
+
+    const salesRole = await this.prisma.role.findUnique({
+      where: { code: ROLE_CODES.SALES_AGENT },
+    });
+    if (!salesRole) throw new BadRequestException('دور موظفة المبيعات غير مُعرّف');
+
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          dto.phone ? { phone: dto.phone } : undefined,
+          dto.email ? { email: dto.email } : undefined,
+        ].filter(Boolean) as Array<{ phone?: string; email?: string }>,
+      },
+    });
+    if (existing) {
+      throw new BadRequestException('يوجد حساب بنفس الهاتف أو البريد — عيّنيها كموظفة موجودة');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const employmentType = dto.employmentType ?? 'COMMISSION';
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: dto.name,
+        phone: dto.phone,
+        email: dto.email,
+        passwordHash,
+        status: 'ACTIVE',
+        employmentType,
+        monthlySalary:
+          employmentType === 'SALARY' ? dto.monthlySalary ?? 0 : null,
+        roles: { create: [{ roleId: salesRole.id }] },
+      },
+    });
+
+    await this.assignMember(pageId, { userId: user.id, role: dto.role });
+
+    if (
+      employmentType === 'COMMISSION' &&
+      dto.commissionPerPiece != null &&
+      dto.commissionPerPiece >= 0
+    ) {
+      await this.upsertAgentPieceRule(
+        pageId,
+        user.id,
+        dto.commissionPerPiece,
+      );
+    }
+
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        employmentType: user.employmentType,
+        monthlySalary: user.monthlySalary,
+        status: user.status,
+      },
+      pageId,
+      role: dto.role,
+    };
+  }
+
+  async upsertAgentPieceRule(
+    pageId: string,
+    agentUserId: string,
+    perPiece: number,
+  ) {
+    const existing = await this.prisma.commissionRule.findFirst({
+      where: { pageId, agentUserId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) {
+      return this.prisma.commissionRule.update({
+        where: { id: existing.id },
+        data: {
+          type: 'PER_ITEM',
+          fixedAmount: perPiece,
+          ratePercent: 0,
+          nameAr: existing.nameAr,
+        },
+      });
+    }
+    return this.prisma.commissionRule.create({
+      data: {
+        nameAr: `عمولة قطعة — صفحة`,
+        type: 'PER_ITEM',
+        fixedAmount: perPiece,
+        ratePercent: 0,
+        pageId,
+        agentUserId,
+        source: 'FACEBOOK',
+        isActive: true,
+      },
+    });
+  }
+
+  async updateMemberEmployment(
+    pageId: string,
+    userId: string,
+    dto: {
+      employmentType?: 'NONE' | 'SALARY' | 'COMMISSION';
+      monthlySalary?: number;
+      commissionPerPiece?: number;
+      role?: PageMemberRole;
+    },
+  ) {
+    const link = await this.prisma.facebookPageEmployee.findUnique({
+      where: { pageId_userId: { pageId, userId } },
+    });
+    if (!link) throw new NotFoundException('الموظفة غير مُعيَّنة على هذه الصفحة');
+
+    if (dto.role) {
+      await this.assignMember(pageId, { userId, role: dto.role });
+    }
+
+    if (dto.employmentType || dto.monthlySalary !== undefined) {
+      const data: {
+        employmentType?: 'NONE' | 'SALARY' | 'COMMISSION';
+        monthlySalary?: number | null;
+      } = {};
+      if (dto.employmentType) data.employmentType = dto.employmentType;
+      if (dto.employmentType === 'SALARY') {
+        data.monthlySalary = dto.monthlySalary ?? 0;
+      } else if (dto.employmentType === 'COMMISSION' || dto.employmentType === 'NONE') {
+        data.monthlySalary = null;
+      } else if (dto.monthlySalary !== undefined) {
+        data.monthlySalary = dto.monthlySalary;
+      }
+      await this.prisma.user.update({ where: { id: userId }, data });
+    }
+
+    if (dto.commissionPerPiece != null) {
+      await this.upsertAgentPieceRule(pageId, userId, dto.commissionPerPiece);
+    }
+
+    return this.analyticsSafeEmployees(pageId);
+  }
+
+  private async analyticsSafeEmployees(pageId: string) {
+    return this.prisma.facebookPageEmployee.findMany({
+      where: { pageId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            status: true,
+            employmentType: true,
+            monthlySalary: true,
+          },
+        },
+      },
+    });
   }
 
   async removeMember(pageId: string, userId: string) {

@@ -333,6 +333,7 @@ export class UsersService {
               orderNumber: true,
               totalAmount: true,
               createdAt: true,
+              status: true,
             },
           },
         },
@@ -348,7 +349,224 @@ export class UsersService {
         name: true,
       },
     });
-    return { profile, salaries, commissions };
+
+    const earned = commissions.filter((c) => c.status !== 'CANCELLED');
+    const voided = commissions.filter((c) => c.status === 'CANCELLED');
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const earnedThisMonth = earned.filter(
+      (c) => new Date(c.createdAt) >= monthStart,
+    );
+
+    return {
+      profile,
+      salaries,
+      commissions,
+      summary: {
+        earnedAmount: earned.reduce((s, c) => s + Number(c.amount), 0),
+        earnedPieces: earned.reduce((s, c) => s + c.itemCount, 0),
+        earnedOrders: earned.length,
+        voidedAmount: voided.reduce((s, c) => s + Number(c.amount), 0),
+        monthAmount: earnedThisMonth.reduce((s, c) => s + Number(c.amount), 0),
+        monthPieces: earnedThisMonth.reduce((s, c) => s + c.itemCount, 0),
+        monthOrders: earnedThisMonth.length,
+      },
+    };
+  }
+
+  /** Restricted dashboard for Facebook page employees */
+  async staffHome(user: AuthUser) {
+    const memberships = await this.prisma.facebookPageEmployee.findMany({
+      where: { userId: user.id },
+      select: { pageId: true, page: { select: { id: true, name: true, status: true } } },
+    });
+    const pageIds = memberships.map((p) => p.pageId);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const month = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    // Phase 1.5: only orders on currently assigned pages
+    const pageScope = { facebookPageId: { in: pageIds } };
+
+    const [
+      ordersToday,
+      deliveredMonth,
+      inProgress,
+      cancelledMonth,
+      profile,
+      commissionsMonth,
+    ] = await Promise.all([
+      this.prisma.order.count({
+        where: { ...pageScope, createdAt: { gte: today } },
+      }),
+      this.prisma.order.count({
+        where: {
+          ...pageScope,
+          status: 'DELIVERED',
+          createdAt: { gte: month },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          ...pageScope,
+          status: {
+            in: [
+              'NEW',
+              'CONFIRMED',
+              'PREPARING',
+              'READY',
+              'ASSIGNED',
+              'OUT_FOR_DELIVERY',
+            ],
+          },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          ...pageScope,
+          status: { in: ['CANCELLED', 'RETURNED'] },
+          createdAt: { gte: month },
+        },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          name: true,
+          employmentType: true,
+          monthlySalary: true,
+        },
+      }),
+      this.prisma.commissionEntry.aggregate({
+        where: {
+          agentUserId: user.id,
+          status: { in: ['PENDING', 'APPROVED', 'PAID'] },
+          createdAt: { gte: month },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    return {
+      profile,
+      pages: memberships.map((m) => m.page),
+      kpis: {
+        ordersToday,
+        deliveredMonth,
+        inProgress,
+        cancelledMonth,
+        commissionMonth: Number(commissionsMonth._sum.amount || 0),
+        monthlySalary: profile?.monthlySalary
+          ? Number(profile.monthlySalary)
+          : null,
+        employmentType: profile?.employmentType || 'NONE',
+      },
+    };
+  }
+
+  async pageStaffProfile(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        status: true,
+        employmentType: true,
+        monthlySalary: true,
+        roles: { include: { role: { select: { code: true, nameAr: true } } } },
+        facebookPages: {
+          include: {
+            page: {
+              select: { id: true, name: true, status: true, publicCode: true },
+            },
+          },
+        },
+      },
+    });
+    if (!user) throw new NotFoundException('المستخدم غير موجود');
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const month = new Date(today.getFullYear(), today.getMonth(), 1);
+    const pageIds = user.facebookPages.map((fp) => fp.pageId);
+
+    const [ordersToday, ordersMonth, delivered, cancelled, commissionAgg, recent] =
+      await Promise.all([
+        this.prisma.order.count({
+          where: {
+            salesAgentId: id,
+            facebookPageId: { in: pageIds },
+            createdAt: { gte: today },
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            salesAgentId: id,
+            facebookPageId: { in: pageIds },
+            createdAt: { gte: month },
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            salesAgentId: id,
+            facebookPageId: { in: pageIds },
+            status: 'DELIVERED',
+          },
+        }),
+        this.prisma.order.count({
+          where: {
+            salesAgentId: id,
+            facebookPageId: { in: pageIds },
+            status: { in: ['CANCELLED', 'RETURNED'] },
+          },
+        }),
+        this.prisma.commissionEntry.aggregate({
+          where: {
+            agentUserId: id,
+            status: { in: ['PENDING', 'APPROVED', 'PAID'] },
+          },
+          _sum: { amount: true },
+        }),
+        this.prisma.order.findMany({
+          where: {
+            salesAgentId: id,
+            facebookPageId: { in: pageIds },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 15,
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            totalAmount: true,
+            createdAt: true,
+            facebookPage: { select: { id: true, name: true } },
+            shippingName: true,
+          },
+        }),
+      ]);
+
+    return {
+      user,
+      pages: user.facebookPages.map((fp) => ({
+        pageId: fp.pageId,
+        role: fp.role,
+        agentCode: fp.agentCode,
+        assignedAt: fp.assignedAt,
+        page: fp.page,
+      })),
+      kpis: {
+        ordersToday,
+        ordersMonth,
+        delivered,
+        cancelled,
+        commissionTotal: Number(commissionAgg._sum.amount || 0),
+      },
+      recentOrders: recent,
+    };
   }
 
   listSalaryPayments(userId?: string) {

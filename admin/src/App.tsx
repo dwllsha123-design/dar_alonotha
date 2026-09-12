@@ -15,7 +15,11 @@ import { ProductsPage } from '@/features/products/ProductsPage';
 import { CategoriesPage } from '@/features/products/CategoriesPage';
 import { CustomersPage } from '@/features/customers/CustomersPage';
 import { InventoryPage } from '@/features/inventory/InventoryPage';
-import { FacebookPagesPage } from '@/features/marketing/FacebookPagesPage';
+import { FacebookPagesListPage, FacebookPageNewPage } from '@/features/facebook-pages/FacebookPagesListPage';
+import { FacebookPageDetailPage } from '@/features/facebook-pages/FacebookPageDetailPage';
+import { FacebookPageEditPage } from '@/features/facebook-pages/FacebookPageEditPage';
+import { FacebookPageEmployeeDetailPage } from '@/features/facebook-pages/FacebookPageEmployeeDetailPage';
+import { EmployeeHomePage } from '@/features/staff/EmployeeHomePage';
 import { DeliveryPage } from '@/features/delivery/DeliveryPage';
 import { DeliveryPrintPage } from '@/features/delivery/DeliveryPrintPage';
 import { PosInvoicePage } from '@/features/branches/PosInvoicePage';
@@ -109,6 +113,7 @@ export default function App() {
           }
         >
           <Route index element={<DashboardPage />} />
+          <Route path="staff-home" element={<EmployeeHomePage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="orders/new" element={<NewFacebookOrderPage />} />
           <Route path="products" element={<ProductsPage />} />
@@ -120,7 +125,11 @@ export default function App() {
           <Route path="returns" element={<ReturnsPage />} />
           <Route path="pos" element={<Navigate to="/branches" replace />} />
           <Route path="commissions" element={<CommissionsPage />} />
-          <Route path="facebook-pages" element={<FacebookPagesPage />} />
+          <Route path="facebook-pages" element={<FacebookPagesListPage />} />
+          <Route path="facebook-pages/new" element={<FacebookPageNewPage />} />
+          <Route path="facebook-pages/:id" element={<FacebookPageDetailPage />} />
+          <Route path="facebook-pages/:id/edit" element={<FacebookPageEditPage />} />
+          <Route path="facebook-page-employees/:id" element={<FacebookPageEmployeeDetailPage />} />
           <Route path="delivery" element={<DeliveryPage />} />
           <Route path="delivery/company" element={<CompanyOrdersPage />} />
           <Route path="tripoli-drivers" element={<TripoliDriversPage />} />

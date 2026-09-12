@@ -31,13 +31,14 @@ const links: NavItem[] = [
   { to: '/delivery/company', label: 'طلبات شركة التوصيل', icon: 'local_shipping', perm: 'orders.view', hint: 'متابعة حالات Accuratess لحظياً' },
   { to: '/commissions', label: 'العمولات', icon: 'payments', perm: 'commissions.view', hint: 'عمولة المسوّقين والمندوبين' },
   { to: '/my-payroll', label: 'راتبي', icon: 'account_balance_wallet', perm: '__any__', hint: 'راتبك الشهري وعمولاتك' },
-  { to: '/facebook-pages', label: 'الصفحات', icon: 'web', perm: 'facebook_pages.view', hint: 'صفحات فيسبوك وروابط المتجر الخاصة بها' },
+  { to: '/facebook-pages', label: 'صفحات الفيسبوك', icon: 'web', perm: 'facebook_pages.manage', hint: 'إدارة الصفحات والموظفات والأداء' },
   { to: '/banners', label: 'صور المتجر', icon: 'view_carousel', perm: 'marketing.manage', hint: 'سلايدر الرئيسية ولافتات العروض' },
   { to: '/users', label: 'المستخدمون', icon: 'manage_accounts', perm: 'users.manage', hint: 'الموظفون وصلاحيات كل وظيفة' },
   { to: '/audit', label: 'سجل النشاط', icon: 'history', perm: 'audit.view', hint: 'من عدّل ماذا ومتى' },
 ];
 
 const pageEmployeeLinks: NavItem[] = [
+  { to: '/staff-home', label: 'الرئيسية', icon: 'dashboard', perm: '__any__', hint: 'ملخص يومك' },
   { to: '/orders', label: 'الطلبات', icon: 'shopping_cart', perm: 'orders.view', hint: 'طلبات صفحاتك' },
   { to: '/orders/new', label: 'إضافة طلب', icon: 'add_circle', perm: 'orders.create', hint: 'تسجيل طلب من ماسنجر' },
   { to: '/orders?mine=1', label: 'طلباتي', icon: 'person', perm: 'orders.view', hint: 'الطلبات المسجّلة باسمك' },
@@ -360,6 +361,7 @@ export function AppLayout() {
             location.pathname.startsWith('/inventory') ||
             location.pathname.startsWith('/commissions') ||
             location.pathname.startsWith('/facebook-pages') ||
+            location.pathname.startsWith('/facebook-page-employees') ||
             location.pathname.startsWith('/users') ||
             location.pathname.startsWith('/delivery') ||
             location.pathname.startsWith('/branches') ||

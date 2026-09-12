@@ -43,7 +43,7 @@ export function isFacebookPageEmployee(user: ApiUser | null) {
 export function homePath(user: ApiUser | null) {
   if (isDriverOnly(user)) return '/driver';
   if (isBranchUser(user)) return '/branch';
-  if (isFacebookPageEmployee(user)) return '/orders';
+  if (isFacebookPageEmployee(user)) return '/staff-home';
   return '/';
 }
 

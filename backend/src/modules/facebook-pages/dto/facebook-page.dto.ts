@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -25,6 +26,18 @@ export class CreateFacebookPageDto {
   @IsOptional()
   @IsString()
   pageId?: string;
+
+  /** اسم تعريفي داخلي — يُدمج في الملاحظات إن وُجد */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  internalLabel?: string;
+
+  /** رابط صفحة فيسبوك اختياري — يُدمج في الملاحظات */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  facebookUrl?: string;
 
   @IsOptional()
   @IsString()
@@ -117,4 +130,60 @@ export class SetPageCredentialsDto {
   @IsString()
   @MinLength(6)
   password!: string;
+}
+
+export class CreatePageStaffDto {
+  @IsString()
+  @MaxLength(120)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsString()
+  @MinLength(6)
+  password!: string;
+
+  @IsEnum(PageMemberRole)
+  role!: PageMemberRole;
+
+  @IsOptional()
+  @IsEnum(['NONE', 'SALARY', 'COMMISSION'] as const)
+  employmentType?: 'NONE' | 'SALARY' | 'COMMISSION';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlySalary?: number;
+
+  /** عمولة ثابتة للقطعة لهذه الصفحة (LYD) — تُنشئ/تحدّث CommissionRule */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  commissionPerPiece?: number;
+}
+
+export class UpdateMemberEmploymentDto {
+  @IsOptional()
+  @IsEnum(PageMemberRole)
+  role?: PageMemberRole;
+
+  @IsOptional()
+  @IsEnum(['NONE', 'SALARY', 'COMMISSION'] as const)
+  employmentType?: 'NONE' | 'SALARY' | 'COMMISSION';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlySalary?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  commissionPerPiece?: number;
 }

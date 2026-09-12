@@ -60,6 +60,29 @@ export class UsersController {
     return this.usersService.myPayroll(user);
   }
 
+  @Get('staff-home')
+  @ApiBearerAuth()
+  staffHome(@CurrentUser() user: AuthUser) {
+    return this.usersService.staffHome(user);
+  }
+
+  @Get('page-staff/:id')
+  @ApiBearerAuth()
+  @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
+  pageStaffProfile(@Param('id') id: string) {
+    return this.usersService.pageStaffProfile(id);
+  }
+
+  @Patch('page-staff/:id/status')
+  @ApiBearerAuth()
+  @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_MANAGE)
+  setPageStaffStatus(
+    @Param('id') id: string,
+    @Body() dto: { status: 'ACTIVE' | 'INACTIVE' },
+  ) {
+    return this.usersService.update(id, { status: dto.status });
+  }
+
   @Get('salary-payments')
   @ApiBearerAuth()
   @RequirePermissions(PERMISSIONS.USERS_MANAGE)
