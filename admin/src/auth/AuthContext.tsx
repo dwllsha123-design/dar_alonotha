@@ -31,9 +31,19 @@ export function isBranchUser(user: ApiUser | null) {
   return !staff;
 }
 
+/** Facebook Page employee — restricted admin shell (not branch/driver/admin). */
+export function isFacebookPageEmployee(user: ApiUser | null) {
+  if (!user) return false;
+  if (user.roles.includes('super_admin') || user.roles.includes('admin')) return false;
+  if (user.branch?.id) return false;
+  if (user.roles.includes('delivery_agent')) return false;
+  return user.roles.includes('sales_agent');
+}
+
 export function homePath(user: ApiUser | null) {
   if (isDriverOnly(user)) return '/driver';
   if (isBranchUser(user)) return '/branch';
+  if (isFacebookPageEmployee(user)) return '/orders';
   return '/';
 }
 

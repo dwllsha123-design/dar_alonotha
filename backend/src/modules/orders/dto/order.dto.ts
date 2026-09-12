@@ -60,6 +60,15 @@ export class CreateOrderDto {
   @IsString()
   customerPhone?: string;
 
+  /** Secondary phone — stored in order notes (Customer model has one phone). */
+  @IsOptional()
+  @IsString()
+  customerPhone2?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingPhone2?: string;
+
   @IsOptional()
   @IsString()
   facebookPageId?: string;

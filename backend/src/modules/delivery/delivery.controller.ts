@@ -168,7 +168,7 @@ export class DeliveryController {
 
   @Get(':id/slip')
   @RequirePermissions(PERMISSIONS.ORDERS_VIEW)
-  slip(@Param('id') id: string) {
-    return this.deliveryService.getShippingSlip(id);
+  slip(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.deliveryService.getShippingSlip(user, id);
   }
 }

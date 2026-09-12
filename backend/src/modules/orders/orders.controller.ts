@@ -32,19 +32,21 @@ export class OrdersController {
     @Query('status') status?: string,
     @Query('facebookPageId') facebookPageId?: string,
     @Query('pagePublicCode') pagePublicCode?: string,
+    @Query('mine') mine?: string,
   ) {
     return this.ordersService.findAll(user, {
       source,
       status,
       facebookPageId,
       pagePublicCode: pagePublicCode ? Number(pagePublicCode) : undefined,
+      mine: mine === '1' || mine === 'true',
     });
   }
 
   @Get(':id')
   @RequirePermissions(PERMISSIONS.ORDERS_VIEW)
-  findOne(@Param('id') id: string) {
-    return this.ordersService.findOne(id);
+  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.ordersService.findOne(user, id);
   }
 
   @Post()

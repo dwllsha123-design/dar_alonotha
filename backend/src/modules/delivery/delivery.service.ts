@@ -18,6 +18,12 @@ import {
 
 import { ROLE_CODES } from '../../common/permissions';
 import {
+  assertCanAccessOrder,
+  assertCanUseFacebookPage,
+  isOrderAdmin,
+  pageAgentOrderScope,
+} from '../../common/order-access';
+import {
   findDeliveryCity,
   TRIPOLI_AREAS,
 } from '../../common/delivery/delivery-zones';
@@ -169,26 +175,14 @@ export class DeliveryService {
   }
 
   private isAdmin(user: AuthUser) {
-    return user.roles.includes('super_admin') || user.roles.includes('admin');
+    return isOrderAdmin(user);
   }
 
   private async orderScope(user: AuthUser): Promise<Prisma.OrderWhereInput | undefined> {
     if (this.isAdmin(user) || user.roles.includes(ROLE_CODES.DELIVERY_AGENT)) {
       return undefined;
     }
-    if (user.roles.includes(ROLE_CODES.SALES_AGENT)) {
-      const pages = await this.prisma.facebookPageEmployee.findMany({
-        where: { userId: user.id },
-        select: { pageId: true },
-      });
-      return {
-        OR: [
-          { salesAgentId: user.id },
-          { facebookPageId: { in: pages.map((p) => p.pageId) } },
-        ],
-      };
-    }
-    return undefined;
+    return pageAgentOrderScope(this.prisma, user);
   }
 
   async listDeliveries(
@@ -335,6 +329,7 @@ export class DeliveryService {
   }
 
   async assign(user: AuthUser, dto: AssignDeliveryDto) {
+    await assertCanAccessOrder(this.prisma, user, dto.orderId);
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
       include: { facebookPage: true },
@@ -725,6 +720,11 @@ export class DeliveryService {
           titleAr: 'مرتجع توصيل',
           type: 'ORDER_RETURNED',
         });
+        try {
+          await this.commissions.voidForOrder(updated.order.id, 'delivery_returned');
+        } catch {
+          /* ignore */
+        }
       }
       if (dto.status === 'IN_TRANSIT') {
         await this.notifications.notifyOrderStakeholders(updated.order, {
@@ -776,7 +776,7 @@ export class DeliveryService {
     return { live: true, counts: groups, orders: rows };
   }
 
-  async getShippingSlip(id: string) {
+  async getShippingSlip(user: AuthUser, id: string) {
     const delivery = await this.prisma.delivery.findUnique({
       where: { id },
       include: {
@@ -793,6 +793,7 @@ export class DeliveryService {
       },
     });
     if (!delivery) throw new NotFoundException('بوليصة الشحن غير موجودة');
+    await assertCanAccessOrder(this.prisma, user, delivery.orderId);
     this.assertWaybillPrintable(delivery.order);
     const senderName = await this.resolveSenderName(delivery.order);
     const accuratessCode = this.resolveAccuratessCode(delivery, delivery.order);
@@ -856,7 +857,8 @@ export class DeliveryService {
     });
   }
 
-  async slipFromOrder(orderId: string) {
+  async slipFromOrder(user: AuthUser, orderId: string) {
+    await assertCanAccessOrder(this.prisma, user, orderId);
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -870,7 +872,7 @@ export class DeliveryService {
     this.assertWaybillPrintable(order);
     const deliveryForSlip = await this.findDeliveryForSlip(orderId);
     if (deliveryForSlip) {
-      return this.getShippingSlip(deliveryForSlip.id);
+      return this.getShippingSlip(user, deliveryForSlip.id);
     }
     const senderName = await this.resolveSenderName(order);
     const accuratessCode = this.resolveAccuratessCode(null, order);
@@ -906,6 +908,7 @@ export class DeliveryService {
   async getShippingSlipsBulk(user: AuthUser, dto: BulkSlipsDto) {
     const slips = [];
     if (dto.facebookPageId) {
+      await assertCanUseFacebookPage(this.prisma, user, dto.facebookPageId);
       const scope = await this.orderScope(user);
       const orders = await this.prisma.order.findMany({
         where: {
@@ -922,7 +925,7 @@ export class DeliveryService {
       }
       for (const o of orders) {
         try {
-          slips.push(await this.slipFromOrder(o.id));
+          slips.push(await this.slipFromOrder(user, o.id));
         } catch {
           /* طلبات طرابلس بلا مندوب تُتخطّى ولا تُطبع */
         }
@@ -935,7 +938,9 @@ export class DeliveryService {
       return { slips };
     }
     if (dto.orderIds?.length) {
-      for (const id of dto.orderIds) slips.push(await this.slipFromOrder(id));
+      for (const id of dto.orderIds) {
+        slips.push(await this.slipFromOrder(user, id));
+      }
       return { slips };
     }
     if (dto.ids?.length) {
@@ -946,8 +951,8 @@ export class DeliveryService {
         });
         slips.push(
           asDelivery
-            ? await this.getShippingSlip(id)
-            : await this.slipFromOrder(id),
+            ? await this.getShippingSlip(user, id)
+            : await this.slipFromOrder(user, id),
         );
       }
       return { slips };

@@ -1,13 +1,22 @@
 ﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { api } from '@/api/client';
-import { useAuth } from '@/auth/AuthContext';
+import { isFacebookPageEmployee, useAuth } from '@/auth/AuthContext';
 
 type Page = { id: string; name: string };
 type Product = {
   id: string;
   nameAr: string;
-  variants: Array<{ id: string; sku: string; price: string | number; nameAr?: string; color?: string; size?: string }>;
+  variants: Array<{
+    id: string;
+    sku: string;
+    price: string | number;
+    retailPrice?: string | number;
+    nameAr?: string;
+    color?: string;
+    size?: string;
+    availableQty?: number;
+  }>;
 };
 
 type Line = {
@@ -19,9 +28,17 @@ type Line = {
   unitPrice: number;
 };
 
+type OutletCtx = { selectedFacebookPageId?: string };
+
+const PAGE_STORAGE_KEY = 'selectedFacebookPageId';
+
 export function NewFacebookOrderPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const outlet = useOutletContext<OutletCtx | undefined>();
+  const pageEmployee = isFacebookPageEmployee(user);
+  const assignedPages = user?.facebookPages || [];
+
   const [pages, setPages] = useState<Page[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
@@ -30,6 +47,7 @@ export function NewFacebookOrderPage() {
   const [facebookPageId, setFacebookPageId] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerPhone2, setCustomerPhone2] = useState('');
   const [cities, setCities] = useState<
     Array<{
       nameAr: string;
@@ -53,24 +71,45 @@ export function NewFacebookOrderPage() {
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryType, setDeliveryType] = useState('INTERNAL');
   const [deliveryLabel, setDeliveryLabel] = useState('');
-  const [discountAmount, setDiscountAmount] = useState(0);
   const [notes, setNotes] = useState('');
   const [selectedVariant, setSelectedVariant] = useState('');
   const [qty, setQty] = useState(1);
   const [lines, setLines] = useState<Line[]>([]);
 
   useEffect(() => {
+    const preferred =
+      outlet?.selectedFacebookPageId ||
+      (() => {
+        try {
+          return localStorage.getItem(PAGE_STORAGE_KEY) || '';
+        } catch {
+          return '';
+        }
+      })();
+
+    if (pageEmployee && assignedPages.length) {
+      setPages(assignedPages.map((p) => ({ id: p.id, name: p.name })));
+      const match = assignedPages.find((p) => p.id === preferred);
+      setFacebookPageId(match?.id || assignedPages[0].id);
+    }
+
     Promise.all([
-      api<Page[]>('/facebook-pages'),
+      pageEmployee
+        ? Promise.resolve(null)
+        : api<Page[]>('/facebook-pages').catch(() => [] as Page[]),
       api<Product[]>('/products'),
       api<{ cities: Array<{ nameAr: string; deliveryType: string; areas: string[] }> }>(
         '/store/delivery-options',
       ).catch(() => ({ cities: [] })),
     ])
       .then(([p, pr, zones]) => {
-        setPages(p);
+        if (!pageEmployee && p) {
+          setPages(p);
+          const match = p.find((x) => x.id === preferred);
+          if (match) setFacebookPageId(match.id);
+          else if (p[0]) setFacebookPageId(p[0].id);
+        }
         setProducts(pr);
-        if (p[0]) setFacebookPageId(p[0].id);
         setCities(zones.cities || []);
         if (zones.cities?.[0]) {
           setCity(zones.cities[0].nameAr);
@@ -78,7 +117,14 @@ export function NewFacebookOrderPage() {
         }
       })
       .catch((e) => setError(e.message));
-  }, []);
+  }, [pageEmployee, assignedPages, outlet?.selectedFacebookPageId]);
+
+  useEffect(() => {
+    if (!pageEmployee || !outlet?.selectedFacebookPageId) return;
+    if (assignedPages.some((p) => p.id === outlet.selectedFacebookPageId)) {
+      setFacebookPageId(outlet.selectedFacebookPageId);
+    }
+  }, [outlet?.selectedFacebookPageId, pageEmployee, assignedPages]);
 
   const areas = useMemo(
     () => cities.find((c) => c.nameAr === city)?.areas || [],
@@ -120,6 +166,7 @@ export function NewFacebookOrderPage() {
         p.variants.map((v) => ({
           ...v,
           productName: p.nameAr,
+          price: Number(v.retailPrice ?? v.price),
           label: `${p.nameAr} — ${v.nameAr || [v.color, v.size].filter(Boolean).join('/') || v.sku}`,
         })),
       ),
@@ -140,15 +187,21 @@ export function NewFacebookOrderPage() {
         unitPrice: Number(v.price),
       },
     ]);
+    setSelectedVariant('');
+    setQty(1);
   }
 
   const subtotal = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
-  const total = subtotal - discountAmount + deliveryFee;
+  const total = subtotal + deliveryFee;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!lines.length) {
       setError('أضف منتجاً واحداً على الأقل');
+      return;
+    }
+    if (!facebookPageId) {
+      setError('اختر صفحة فيسبوك');
       return;
     }
     setBusy(true);
@@ -161,6 +214,7 @@ export function NewFacebookOrderPage() {
           facebookPageId,
           customerName,
           customerPhone,
+          customerPhone2: customerPhone2 || undefined,
           shippingName: customerName,
           shippingPhone: customerPhone,
           city,
@@ -169,7 +223,6 @@ export function NewFacebookOrderPage() {
           address,
           landmark,
           deliveryFee,
-          discountAmount,
           notes,
           deliveryType,
           paymentMethod: 'COD',
@@ -191,12 +244,16 @@ export function NewFacebookOrderPage() {
     }
   }
 
+  const pageLocked = pageEmployee && assignedPages.length <= 1;
+
   return (
     <div className="stack">
       <div className="page-title">
         <h1>طلب فيسبوك</h1>
         <p>
-          من هنا تسجّلين طلباً وصل عبر محادثة فيسبوك: بيانات الزبون، المنتجات، المدينة، والصفحة التي جاء منها الطلب حتى يُحسب للمصدر الصحيح. الموظفة: {user?.name}
+          سجّلي الطلب من محادثة ماسنجر بسرعة: بيانات الزبونة، العنوان، المنتج، والكمية.
+          الموظفة: {user?.name}
+          {pageEmployee ? ' — الصفحة تُسجَّل تلقائياً باسمك' : null}
         </p>
       </div>
 
@@ -204,26 +261,49 @@ export function NewFacebookOrderPage() {
         <div className="form-grid two">
           <label>
             اسم الصفحة (مصدر الطلب)
-            <select
-              value={facebookPageId}
-              onChange={(e) => setFacebookPageId(e.target.value)}
-              required
-            >
-              <option value="">اختر الصفحة</option>
-              {pages.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            هاتف العميل
-            <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} required />
+            {pageLocked ? (
+              <input value={pages.find((p) => p.id === facebookPageId)?.name || ''} readOnly />
+            ) : (
+              <select
+                value={facebookPageId}
+                onChange={(e) => setFacebookPageId(e.target.value)}
+                required
+                disabled={pageEmployee && pages.length === 0}
+              >
+                <option value="">اختر الصفحة</option>
+                {pages.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
           <label>
             اسم العميل
-            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required />
+            <input
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          <label>
+            هاتف العميل
+            <input
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              required
+              inputMode="tel"
+            />
+          </label>
+          <label>
+            هاتف بديل (اختياري)
+            <input
+              value={customerPhone2}
+              onChange={(e) => setCustomerPhone2(e.target.value)}
+              inputMode="tel"
+            />
           </label>
           <label>
             المدينة
@@ -268,40 +348,37 @@ export function NewFacebookOrderPage() {
             </label>
           ) : null}
           <label>
-            العنوان
-            <input value={address} onChange={(e) => setAddress(e.target.value)} />
+            العنوان الكامل
+            <input value={address} onChange={(e) => setAddress(e.target.value)} required />
           </label>
           <label>
             علامة مميزة
             <input value={landmark} onChange={(e) => setLandmark(e.target.value)} />
           </label>
           <label>
-            رسوم التوصيل (تلقائي)
+            رسوم التوصيل
             <input type="number" value={deliveryFee} readOnly />
             <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
-              {deliveryLabel || 'يُحسب بعد اختيار المنطقة'}
+              {deliveryLabel || 'يُحسب بعد اختيار المنطقة'} · {deliveryType}
             </span>
-          </label>
-          <label>
-            خصم
-            <input type="number" value={discountAmount} onChange={(e) => setDiscountAmount(Number(e.target.value))} />
           </label>
         </div>
 
         <label>
           ملاحظات
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </label>
 
         <div className="toolbar">
           <div className="form-grid two" style={{ flex: 1 }}>
             <label>
-              المنتج
+              المنتج / المقاس / اللون
               <select value={selectedVariant} onChange={(e) => setSelectedVariant(e.target.value)}>
                 <option value="">اختر صنف</option>
                 {variants.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.label} — {Number(v.price)} د.ل
+                    {v.availableQty != null ? ` (متوفر ${v.availableQty})` : ''}
                   </option>
                 ))}
               </select>
@@ -327,11 +404,11 @@ export function NewFacebookOrderPage() {
               </tr>
             </thead>
             <tbody>
-              {lines.map((l, idx) => (
-                <tr key={`${l.variantId}-${idx}`}>
+              {lines.map((l, i) => (
+                <tr key={`${l.variantId}-${i}`}>
                   <td>
                     {l.productName}
-                    <div style={{ color: 'var(--muted)', fontSize: 13 }}>{l.variantName}</div>
+                    {l.variantName ? ` — ${l.variantName}` : ''}
                   </td>
                   <td>{l.quantity}</td>
                   <td>{l.unitPrice}</td>
@@ -343,11 +420,14 @@ export function NewFacebookOrderPage() {
         </div>
 
         <div className="toolbar">
-          <strong>الإجمالي: {total.toLocaleString('ar-LY')} د.ل</strong>
+          <strong>
+            الإجمالي: {total} د.ل (منتجات {subtotal} + توصيل {deliveryFee})
+          </strong>
           <button className="btn" type="submit" disabled={busy}>
-            {busy ? 'جارٍ الحفظ...' : 'إنشاء الطلب'}
+            {busy ? 'جارٍ الحفظ...' : 'حفظ الطلب'}
           </button>
         </div>
+
         {error ? <div className="error">{error}</div> : null}
       </form>
     </div>

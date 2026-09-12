@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type MouseEvent, type KeyboardEvent } from 'react';
-import { Link, NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom';
-import { isBranchUser, isDriverOnly, useAuth } from '@/auth/AuthContext';
+import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
+  homePath,
+  isBranchUser,
+  isDriverOnly,
+  isFacebookPageEmployee,
+  useAuth,
+} from '@/auth/AuthContext';
 import { api } from '@/api/client';
 
 type NavItem = {
@@ -30,6 +36,16 @@ const links: NavItem[] = [
   { to: '/users', label: 'المستخدمون', icon: 'manage_accounts', perm: 'users.manage', hint: 'الموظفون وصلاحيات كل وظيفة' },
   { to: '/audit', label: 'سجل النشاط', icon: 'history', perm: 'audit.view', hint: 'من عدّل ماذا ومتى' },
 ];
+
+const pageEmployeeLinks: NavItem[] = [
+  { to: '/orders', label: 'الطلبات', icon: 'shopping_cart', perm: 'orders.view', hint: 'طلبات صفحاتك' },
+  { to: '/orders/new', label: 'إضافة طلب', icon: 'add_circle', perm: 'orders.create', hint: 'تسجيل طلب من ماسنجر' },
+  { to: '/orders?mine=1', label: 'طلباتي', icon: 'person', perm: 'orders.view', hint: 'الطلبات المسجّلة باسمك' },
+  { to: '/my-payroll', label: 'راتبي / عمولتي', icon: 'account_balance_wallet', perm: '__any__', hint: 'راتبك وعمولاتك فقط' },
+  { to: '/account', label: 'حسابي', icon: 'manage_accounts', perm: '__any__', hint: 'بيانات حسابك والصفحات' },
+];
+
+const PAGE_STORAGE_KEY = 'selectedFacebookPageId';
 
 type Notif = {
   id: string;
@@ -79,12 +95,36 @@ function relativeTime(iso: string) {
 export function AppLayout() {
   const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notif[]>([]);
   const prevUnread = useRef(0);
+  const pageEmployee = isFacebookPageEmployee(user);
+  const assignedPages = user?.facebookPages || [];
+  const [selectedPageId, setSelectedPageId] = useState(() => {
+    try {
+      return localStorage.getItem(PAGE_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const initial = (user?.name || 'م').trim().charAt(0);
   const unread = notifs.filter((n) => !n.isRead).length;
+
+  useEffect(() => {
+    if (!pageEmployee || !assignedPages.length) return;
+    const valid = assignedPages.some((p) => p.id === selectedPageId);
+    if (!valid) {
+      const next = assignedPages[0].id;
+      setSelectedPageId(next);
+      try {
+        localStorage.setItem(PAGE_STORAGE_KEY, next);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [pageEmployee, assignedPages, selectedPageId]);
 
   async function loadNotifs() {
     try {
@@ -130,7 +170,7 @@ export function AppLayout() {
     setNotifOpen(false);
     await loadNotifs();
     const href = notifHref(n);
-    if (href) navigate(href);
+    if (href) navigate(pageEmployee ? href.replace('/inventory', '/orders').replace('/users', '/account') : href);
   }
 
   async function approveFromNotif(n: Notif, e: MouseEvent | KeyboardEvent) {
@@ -141,12 +181,27 @@ export function AppLayout() {
     await loadNotifs();
   }
 
+  function onSelectPage(id: string) {
+    setSelectedPageId(id);
+    try {
+      localStorage.setItem(PAGE_STORAGE_KEY, id);
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (isDriverOnly(user)) {
     return <Navigate to="/driver" replace />;
   }
   if (isBranchUser(user)) {
     return <Navigate to="/branch" replace />;
   }
+
+  const navLinks = pageEmployee
+    ? pageEmployeeLinks.filter((l) => l.perm === '__any__' || hasPermission(l.perm))
+    : links.filter((l) => l.perm === '__any__' || hasPermission(l.perm));
+
+  const mineActive = location.search.includes('mine=1');
 
   return (
     <div className="app-shell">
@@ -156,11 +211,36 @@ export function AppLayout() {
         <div className="brand">
           <img className="brand-logo" src="/brand-logo.png" alt="دار الأنوثة" />
           <div className="brand-name">دار الأنوثة</div>
-          <div className="brand-kicker">لوحة تحكم إدارة الأعمال</div>
+          <div className="brand-kicker">
+            {pageEmployee ? 'لوحة موظفة الصفحة' : 'لوحة تحكم إدارة الأعمال'}
+          </div>
           <div className="brand-phones">شركة دار الأنوثة</div>
         </div>
 
-        {hasPermission('orders.create') ? (
+        {pageEmployee && assignedPages.length > 1 ? (
+          <label className="panel" style={{ margin: '0 12px 12px', padding: 10, display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>الصفحة النشطة</span>
+            <select
+              value={selectedPageId}
+              onChange={(e) => onSelectPage(e.target.value)}
+              aria-label="اختيار صفحة فيسبوك"
+            >
+              {assignedPages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {pageEmployee && assignedPages.length === 1 ? (
+          <div className="panel" style={{ margin: '0 12px 12px', padding: 10, fontSize: 13 }}>
+            الصفحة: <strong>{assignedPages[0].name}</strong>
+          </div>
+        ) : null}
+
+        {!pageEmployee && hasPermission('orders.create') ? (
           <Link className="nav-cta" to="/orders/new" title="تسجيل طلب وصل من فيسبوك يدوياً" onClick={() => setOpen(false)}>
             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
               add
@@ -170,21 +250,23 @@ export function AppLayout() {
         ) : null}
 
         <nav className="nav">
-          {links
-            .filter((l) => l.perm === '__any__' || hasPermission(l.perm))
-            .map((l) => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                end={l.to === '/' || l.to === '/delivery'}
-                title={l.hint}
-                className={({ isActive }) => (isActive ? 'active' : undefined)}
-                onClick={() => setOpen(false)}
-              >
-                <span className="material-symbols-outlined">{l.icon}</span>
-                <span>{l.label}</span>
-              </NavLink>
-            ))}
+          {navLinks.map((l) => (
+            <NavLink
+              key={l.to}
+              to={l.to}
+              end={l.to === '/' || l.to === '/delivery' || l.to === '/orders'}
+              title={l.hint}
+              className={({ isActive }) => {
+                if (l.to.includes('mine=1')) return mineActive ? 'active' : undefined;
+                if (l.to === '/orders') return isActive && !mineActive ? 'active' : undefined;
+                return isActive ? 'active' : undefined;
+              }}
+              onClick={() => setOpen(false)}
+            >
+              <span className="material-symbols-outlined">{l.icon}</span>
+              <span>{l.label}</span>
+            </NavLink>
+          ))}
         </nav>
 
         <div className="sidebar-foot">
@@ -247,35 +329,50 @@ export function AppLayout() {
                       <span className="notif-time">{relativeTime(n.createdAt)}</span>
                     </div>
                     {n.bodyAr ? <div className="notif-body">{n.bodyAr}</div> : null}
-                    {n.type === 'MARKETER_PENDING' && n.entityId && hasPermission('users.manage') ? (
+                    {!pageEmployee && n.type === 'MARKETER_PENDING' && n.entityId ? (
                       <span
-                        className="btn"
-                        style={{ marginTop: 8, display: 'inline-flex' }}
+                        role="button"
+                        tabIndex={0}
+                        className="btn sm"
+                        style={{ marginTop: 6 }}
                         onClick={(e) => approveFromNotif(n, e)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') approveFromNotif(n, e);
                         }}
-                        role="button"
-                        tabIndex={0}
                       >
-                        موافقة المسوق
+                        اعتماد
                       </span>
                     ) : null}
                   </button>
                 ))}
-                {!notifs.length ? <div className="empty">لا إشعارات</div> : null}
+                {!notifs.length ? <div className="muted">لا إشعارات</div> : null}
               </div>
             ) : null}
-            <Link to="/users" className="icon-btn" aria-label="إعدادات المستخدمين">
-              <span className="material-symbols-outlined">settings</span>
-            </Link>
             <div className="avatar" title={user?.name}>
               {initial}
             </div>
           </div>
         </header>
+
         <main className="page">
-          <Outlet />
+          {pageEmployee &&
+          (location.pathname === '/' ||
+            location.pathname.startsWith('/inventory') ||
+            location.pathname.startsWith('/commissions') ||
+            location.pathname.startsWith('/facebook-pages') ||
+            location.pathname.startsWith('/users') ||
+            location.pathname.startsWith('/delivery') ||
+            location.pathname.startsWith('/branches') ||
+            location.pathname.startsWith('/audit') ||
+            location.pathname.startsWith('/banners') ||
+            location.pathname.startsWith('/categories') ||
+            location.pathname.startsWith('/products') ||
+            location.pathname.startsWith('/customers') ||
+            location.pathname.startsWith('/tripoli')) ? (
+            <Navigate to={homePath(user)} replace />
+          ) : (
+            <Outlet context={{ selectedFacebookPageId: selectedPageId }} />
+          )}
         </main>
       </div>
     </div>

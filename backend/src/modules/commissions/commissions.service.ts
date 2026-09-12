@@ -191,6 +191,15 @@ export class CommissionsService {
 
     if (amount <= 0) return null;
 
+    const existing = await tx.commissionEntry.findUnique({
+      where: {
+        orderId_agentUserId: {
+          orderId: input.orderId,
+          agentUserId: input.agentUserId,
+        },
+      },
+    });
+
     return tx.commissionEntry.upsert({
       where: {
         orderId_agentUserId: {
@@ -215,7 +224,42 @@ export class CommissionsService {
         ratePercent: rate,
         orderTotal: input.orderTotal,
         ruleId: rule?.id,
+        // Re-delivery after void: restore to PENDING (auditable reactivation)
+        status: 'PENDING',
+        notes:
+          existing?.status === 'CANCELLED'
+            ? `reactivated_on_redelivery@${new Date().toISOString()}`
+            : existing?.notes,
       },
     });
+  }
+
+  /**
+   * Auditable void: mark commission CANCELLED with notes. Never deletes rows.
+   * Used when an order is returned or cancelled after commission may have accrued.
+   */
+  async voidForOrder(orderId: string, reason: string) {
+    const entries = await this.prisma.commissionEntry.findMany({
+      where: { orderId, status: { not: 'CANCELLED' } },
+    });
+    if (!entries.length) return { voided: 0 };
+
+    const stamp = new Date().toISOString();
+    let voided = 0;
+    for (const entry of entries) {
+      const clawback =
+        entry.status === 'PAID' ? 'clawback_required' : 'unearned';
+      await this.prisma.commissionEntry.update({
+        where: { id: entry.id },
+        data: {
+          status: 'CANCELLED',
+          notes: [entry.notes, `VOID:${reason}:${clawback}@${stamp}`]
+            .filter(Boolean)
+            .join(' | '),
+        },
+      });
+      voided += 1;
+    }
+    return { voided };
   }
 }

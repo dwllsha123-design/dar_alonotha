@@ -17,6 +17,7 @@ import {
 } from './dto/facebook-page.dto';
 import * as bcrypt from 'bcrypt';
 import { ROLE_CODES } from '../../common/permissions';
+import { assertCanUseFacebookPage } from '../../common/order-access';
 
 @Injectable()
 export class FacebookPagesService {
@@ -85,12 +86,8 @@ export class FacebookPagesService {
     return pages.map((p) => {
       const links = this.linksFor(p.publicCode);
       const token = p.shippingAccount?.apiToken;
-      return {
-        ...p,
-        username: p.username,
-        hasCredentials: Boolean(p.username && p.passwordHash),
-        ...links,
-        shippingAccount: p.shippingAccount
+      const shippingAccount =
+        isAdmin && p.shippingAccount
           ? {
               ...p.shippingAccount,
               apiToken: token
@@ -98,17 +95,32 @@ export class FacebookPagesService {
                 : null,
               hasToken: Boolean(token),
             }
-          : null,
+          : null;
+      return {
+        ...p,
+        username: isAdmin ? p.username : undefined,
+        passwordHash: undefined,
+        hasCredentials: Boolean(p.username && p.passwordHash),
+        ...links,
+        shippingAccount,
+        employees: isAdmin
+          ? p.employees
+          : p.employees.filter((e) => e.userId === user.id),
         members: {
-          manager: p.manager,
-          admins: p.employees.filter((e) => e.role === 'ADMIN'),
-          agents: p.employees.filter((e) => e.role === 'AGENT'),
+          manager: isAdmin ? p.manager : null,
+          admins: isAdmin
+            ? p.employees.filter((e) => e.role === 'ADMIN')
+            : [],
+          agents: isAdmin
+            ? p.employees.filter((e) => e.role === 'AGENT')
+            : p.employees.filter((e) => e.userId === user.id),
         },
       };
     });
   }
 
-  async findOne(id: string) {
+  async findOne(user: AuthUser, id: string) {
+    await assertCanUseFacebookPage(this.prisma, user, id);
     const page = await this.prisma.facebookPage.findUnique({
       where: { id },
       include: {
@@ -134,18 +146,44 @@ export class FacebookPagesService {
       },
     });
     if (!page) throw new NotFoundException('الصفحة غير موجودة');
+
+    const isAdmin =
+      user.roles.includes('super_admin') || user.roles.includes('admin');
+    const safe = isAdmin
+      ? page
+      : {
+          ...page,
+          username: undefined,
+          passwordHash: undefined,
+          shippingAccount: undefined,
+          employees: page.employees.filter((e) => e.userId === user.id),
+        };
+
     return {
-      ...page,
+      ...safe,
       ...this.linksFor(page.publicCode),
-      agents: page.employees
-        .filter((e) => e.role === 'AGENT' && e.agentCode != null)
-        .map((e) => ({
-          userId: e.userId,
-          name: e.user.name,
-          agentCode: e.agentCode,
-          ...this.linksFor(page.publicCode, e.agentCode),
-        })),
+      agents: isAdmin
+        ? page.employees
+            .filter((e) => e.role === 'AGENT' && e.agentCode != null)
+            .map((e) => ({
+              userId: e.userId,
+              name: e.user.name,
+              agentCode: e.agentCode,
+              ...this.linksFor(page.publicCode, e.agentCode),
+            }))
+        : [],
     };
+  }
+
+  /** Admin/manage reads — no page-employee redaction. */
+  private async adminFindOne(id: string) {
+    const adminUser: AuthUser = {
+      id: 'system',
+      name: 'system',
+      roles: ['admin'],
+      permissions: [],
+    };
+    return this.findOne(adminUser, id);
   }
 
   async create(dto: CreateFacebookPageDto) {
@@ -164,7 +202,8 @@ export class FacebookPagesService {
   }
 
   async update(id: string, dto: UpdateFacebookPageDto) {
-    await this.findOne(id);
+    const page = await this.prisma.facebookPage.findUnique({ where: { id } });
+    if (!page) throw new NotFoundException('الصفحة غير موجودة');
     return this.prisma.facebookPage.update({ where: { id }, data: dto });
   }
 
@@ -216,14 +255,14 @@ export class FacebookPagesService {
       },
     });
 
-    return this.findOne(pageId);
+    return this.adminFindOne(pageId);
   }
 
   async removeMember(pageId: string, userId: string) {
     await this.prisma.facebookPageEmployee.delete({
       where: { pageId_userId: { pageId, userId } },
     });
-    return this.findOne(pageId);
+    return this.adminFindOne(pageId);
   }
 
   /** Legacy helper kept for older admin UI */
@@ -231,7 +270,7 @@ export class FacebookPagesService {
     for (const userId of userIds) {
       await this.assignMember(id, { userId, role: PageMemberRole.AGENT });
     }
-    return this.findOne(id);
+    return this.adminFindOne(id);
   }
 
   async setCredentials(pageId: string, dto: SetPageCredentialsDto) {
@@ -295,7 +334,7 @@ export class FacebookPagesService {
         update: { role: PageMemberRole.MANAGER },
       });
 
-      return this.findOne(pageId);
+      return this.adminFindOne(pageId);
     });
   }
 

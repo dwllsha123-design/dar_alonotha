@@ -73,8 +73,8 @@ async function main() {
         PERMISSIONS.CUSTOMERS_EDIT,
         PERMISSIONS.PRODUCTS_VIEW,
         PERMISSIONS.FACEBOOK_PAGES_VIEW,
-        PERMISSIONS.INVENTORY_VIEW,
-        PERMISSIONS.COMMISSIONS_VIEW,
+        // Availability comes via products API (products.view).
+        // Payroll/commission self-view via GET /users/payroll/me (no commissions.view).
       ],
     },
     {

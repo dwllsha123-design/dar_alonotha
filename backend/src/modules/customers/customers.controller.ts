@@ -12,6 +12,10 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PERMISSIONS } from '../../common/permissions';
+import {
+  AuthUser,
+  CurrentUser,
+} from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -21,14 +25,14 @@ export class CustomersController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.CUSTOMERS_VIEW)
-  findAll(@Query('q') q?: string) {
-    return this.customersService.findAll(q);
+  findAll(@CurrentUser() user: AuthUser, @Query('q') q?: string) {
+    return this.customersService.findAll(user, q);
   }
 
   @Get(':id')
   @RequirePermissions(PERMISSIONS.CUSTOMERS_VIEW)
-  findOne(@Param('id') id: string) {
-    return this.customersService.findOne(id);
+  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.customersService.findOne(user, id);
   }
 
   @Post()
@@ -39,7 +43,11 @@ export class CustomersController {
 
   @Patch(':id')
   @RequirePermissions(PERMISSIONS.CUSTOMERS_EDIT)
-  update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
-    return this.customersService.update(id, dto);
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateCustomerDto,
+  ) {
+    return this.customersService.update(user, id, dto);
   }
 }

@@ -379,7 +379,15 @@ async function main() {
     );
 
     if (firstCode && deliveryAfterRoute?.id) {
-      const slipByDelivery = await delivery.getShippingSlip(deliveryAfterRoute.id);
+      const slipByDelivery = await delivery.getShippingSlip(
+        {
+          id: 'test-admin',
+          name: 'test',
+          roles: ['super_admin'],
+          permissions: [],
+        },
+        deliveryAfterRoute.id,
+      );
       checks.push(
         assert(
           slipByDelivery.accuratessCode === firstCode,

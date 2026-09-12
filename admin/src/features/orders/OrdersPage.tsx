@@ -1,6 +1,7 @@
 ﻿import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { api, money, sourceLabel, statusBadgeClass, statusLabel } from '@/api/client';
+import { isFacebookPageEmployee, useAuth } from '@/auth/AuthContext';
 
 type OrderItem = {
   id: string;
@@ -79,8 +80,12 @@ const STATUS_TABS = [
 ];
 
 export function OrdersPage() {
+  const { user } = useAuth();
+  const pageEmployee = isFacebookPageEmployee(user);
+  const outlet = useOutletContext<{ selectedFacebookPageId?: string } | undefined>();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get('focus') || '';
+  const mineOnly = searchParams.get('mine') === '1';
   const [orders, setOrders] = useState<Order[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [couriers, setCouriers] = useState<Courier[]>([]);
@@ -95,11 +100,18 @@ export function OrdersPage() {
   const [selectedCourierId, setSelectedCourierId] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!pageEmployee) return;
+    const selected = outlet?.selectedFacebookPageId;
+    if (selected) setFacebookPageId(selected);
+  }, [pageEmployee, outlet?.selectedFacebookPageId]);
+
   async function refreshOrders() {
     const params = new URLSearchParams();
     if (status) params.set('status', status);
     if (source) params.set('source', source);
     if (facebookPageId) params.set('facebookPageId', facebookPageId);
+    if (mineOnly) params.set('mine', '1');
     const qs = params.toString();
     const list = await api<Order[]>(`/orders${qs ? `?${qs}` : ''}`);
     setOrders(list);
@@ -107,17 +119,23 @@ export function OrdersPage() {
   }
 
   useEffect(() => {
-    api<Page[]>('/facebook-pages')
-      .then(setPages)
-      .catch(() => undefined);
-    api<Courier[]>('/couriers')
-      .then(setCouriers)
-      .catch(() => undefined);
-  }, []);
+    if (pageEmployee) {
+      setPages((user?.facebookPages || []).map((p) => ({ id: p.id, name: p.name, publicCode: 0 })));
+    } else {
+      api<Page[]>('/facebook-pages')
+        .then(setPages)
+        .catch(() => undefined);
+    }
+    if (!pageEmployee) {
+      api<Courier[]>('/couriers')
+        .then(setCouriers)
+        .catch(() => undefined);
+    }
+  }, [pageEmployee, user?.facebookPages]);
 
   useEffect(() => {
     refreshOrders().catch((e) => setError(e.message));
-  }, [status, source, facebookPageId]);
+  }, [status, source, facebookPageId, mineOnly]);
 
   const activeCouriers = useMemo(
     () => couriers.filter((c) => c.isActive),
@@ -199,10 +217,11 @@ export function OrdersPage() {
     <div className="stack">
       <div className="topbar">
         <div className="page-title">
-          <h1>إدارة الطلبات</h1>
+          <h1>{mineOnly ? 'طلباتي' : pageEmployee ? 'طلبات الصفحة' : 'إدارة الطلبات'}</h1>
           <p>
-            اضغطي على الطلب لعرض صور المنتجات — لتسهيل التجهيز والإخراج. الطلبات الجديدة والمؤكدة
-            تظهر بصور كل لون/مقاس.
+            {pageEmployee
+              ? 'طلبات صفحاتك فقط — اضغطي على الطلب لعرض المنتجات.'
+              : 'اضغطي على الطلب لعرض صور المنتجات — لتسهيل التجهيز والإخراج. الطلبات الجديدة والمؤكدة تظهر بصور كل لون/مقاس.'}
           </p>
         </div>
         <Link className="btn" to="/orders/new">

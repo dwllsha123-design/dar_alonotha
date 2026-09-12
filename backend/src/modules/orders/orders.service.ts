@@ -19,6 +19,13 @@ import {
   findDeliveryCity,
 } from '../../common/delivery/delivery-zones';
 import { resolveVariantImageUrl } from '../../common/variant-image';
+import {
+  assertCanAccessOrder,
+  assertCanUseFacebookPage,
+  getAssignedFacebookPageIds,
+  isPageScopedAgent,
+  pageAgentOrderScope,
+} from '../../common/order-access';
 
 @Injectable()
 export class OrdersService {
@@ -41,24 +48,6 @@ export class OrdersService {
     return `ORD-${year}-${String(seq.counter).padStart(6, '0')}`;
   }
 
-  private async assertFacebookPageAccess(
-    user: AuthUser,
-    facebookPageId?: string,
-  ) {
-    if (!facebookPageId) return;
-    if (user.roles.includes('super_admin') || user.roles.includes('admin')) {
-      return;
-    }
-    const link = await this.prisma.facebookPageEmployee.findUnique({
-      where: {
-        pageId_userId: { pageId: facebookPageId, userId: user.id },
-      },
-    });
-    if (!link) {
-      throw new ForbiddenException('غير مسموح لك بالبيع على هذه الصفحة');
-    }
-  }
-
   async findAll(
     user: AuthUser,
     filters?: {
@@ -66,29 +55,22 @@ export class OrdersService {
       status?: string;
       facebookPageId?: string;
       pagePublicCode?: number;
+      mine?: boolean;
     },
   ) {
     const where: Prisma.OrderWhereInput = {};
 
     if (filters?.source) where.source = filters.source;
     if (filters?.status) where.status = filters.status as never;
-    if (filters?.facebookPageId) where.facebookPageId = filters.facebookPageId;
-    if (filters?.pagePublicCode) where.pagePublicCode = filters.pagePublicCode;
-
-    if (
-      user.roles.includes('sales_agent') &&
-      !user.roles.includes('super_admin') &&
-      !user.roles.includes('admin')
-    ) {
-      const pages = await this.prisma.facebookPageEmployee.findMany({
-        where: { userId: user.id },
-        select: { pageId: true },
-      });
-      where.OR = [
-        { salesAgentId: user.id },
-        { facebookPageId: { in: pages.map((p) => p.pageId) } },
-      ];
+    if (filters?.facebookPageId) {
+      await assertCanUseFacebookPage(this.prisma, user, filters.facebookPageId);
+      where.facebookPageId = filters.facebookPageId;
     }
+    if (filters?.pagePublicCode) where.pagePublicCode = filters.pagePublicCode;
+    if (filters?.mine) where.salesAgentId = user.id;
+
+    const scope = await pageAgentOrderScope(this.prisma, user);
+    if (scope) Object.assign(where, scope);
 
     const rows = await this.prisma.order.findMany({
       where,
@@ -152,7 +134,8 @@ export class OrdersService {
     }));
   }
 
-  async findOne(id: string) {
+  async findOne(user: AuthUser, id: string) {
+    await assertCanAccessOrder(this.prisma, user, id);
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: {
@@ -187,7 +170,9 @@ export class OrdersService {
     let referralVisitId: string | undefined;
     let attributionSource: string | undefined;
 
-    if (dto.attributionToken) {
+    const pageScoped = isPageScopedAgent(user);
+
+    if (dto.attributionToken && !pageScoped) {
       const visit = await this.prisma.referralVisit.findUnique({
         where: { attributionToken: dto.attributionToken },
         include: { page: true },
@@ -204,8 +189,37 @@ export class OrdersService {
       if (visit.agentUserId) salesAgentId = visit.agentUserId;
     }
 
-    // Manual agent order: auto-bind page + agent codes
-    if (!dto.attributionToken && user.roles.includes('sales_agent')) {
+    // Page employees: force self as agent; page must be an assigned page
+    if (pageScoped) {
+      const pageIds = await getAssignedFacebookPageIds(this.prisma, user.id);
+      if (!pageIds.length) {
+        throw new ForbiddenException('لست مُعيَّناً على أي صفحة فيسبوك');
+      }
+      if (facebookPageId && !pageIds.includes(facebookPageId)) {
+        throw new ForbiddenException('غير مسموح لك بالبيع على هذه الصفحة');
+      }
+      if (!facebookPageId) {
+        if (pageIds.length === 1) facebookPageId = pageIds[0];
+        else {
+          throw new ForbiddenException('يجب اختيار صفحة فيسبوك مُعيَّنة لك');
+        }
+      }
+      const membership = await this.prisma.facebookPageEmployee.findUnique({
+        where: {
+          pageId_userId: { pageId: facebookPageId, userId: user.id },
+        },
+        include: { page: true },
+      });
+      if (!membership) {
+        throw new ForbiddenException('غير مسموح لك بالبيع على هذه الصفحة');
+      }
+      facebookPageId = membership.pageId;
+      pagePublicCode = membership.page.publicCode;
+      agentPublicCode = membership.agentCode ?? undefined;
+      salesAgentId = user.id;
+      attributionSource = 'AGENT_MANUAL';
+    } else if (!dto.attributionToken && user.roles.includes('sales_agent')) {
+      // Manual agent order: auto-bind page + agent codes
       const membership = await this.prisma.facebookPageEmployee.findFirst({
         where: {
           userId: user.id,
@@ -229,7 +243,10 @@ export class OrdersService {
       pagePublicCode = page?.publicCode;
     }
 
-    await this.assertFacebookPageAccess(user, facebookPageId);
+    await assertCanUseFacebookPage(this.prisma, user, facebookPageId);
+
+    const secondaryPhone =
+      dto.customerPhone2?.trim() || dto.shippingPhone2?.trim() || '';
 
     const deliveryQuote =
       dto.source !== 'POS' && dto.city
@@ -373,6 +390,7 @@ export class OrdersService {
           landmark: dto.landmark,
           notes: [
             dto.notes?.trim(),
+            secondaryPhone ? `هاتف بديل: ${secondaryPhone}` : '',
             deliveryQuote?.gender
               ? `توصيل ${deliveryGenderLabelAr(deliveryQuote.gender)}`
               : '',
@@ -467,12 +485,12 @@ export class OrdersService {
         bodyAr: `مصدر: ${created.source} — المبلغ: ${created.totalAmount} د.ل`,
         type: 'ORDER_CREATED',
       });
-      return this.findOne(created.id);
+      return this.findOne(user, created.id);
     });
   }
 
   async updateStatus(user: AuthUser, id: string, dto: UpdateOrderStatusDto) {
-    const order = await this.findOne(id);
+    const order = await this.findOne(user, id);
 
     if (dto.status === 'CANCELLED' && order.status === 'DELIVERED') {
       throw new BadRequestException('لا يمكن إلغاء طلب تم توصيله');
@@ -592,6 +610,11 @@ export class OrdersService {
         titleAr: 'تم إلغاء الطلب',
         type: 'ORDER_CANCELLED',
       });
+      try {
+        await this.commissions.voidForOrder(id, 'order_cancelled');
+      } catch {
+        /* لا نُفشل تحديث الحالة */
+      }
     }
 
     return updated;

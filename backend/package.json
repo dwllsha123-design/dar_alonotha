@@ -22,6 +22,8 @@
     "test:color-media": "ts-node --transpile-only scripts/test-color-media.ts",
     "test:migration-safety": "ts-node --transpile-only scripts/test-migration-safety.ts",
     "test:persistence": "ts-node --transpile-only scripts/test-persistence-guards.ts",
+    "test:order-access": "ts-node --transpile-only scripts/test-order-access.ts",
+    "test:phase15-auth": "ts-node --transpile-only scripts/test-phase15-auth-e2e.ts",
     "prisma:generate:sqlite-legacy": "prisma generate --schema=prisma/sqlite-legacy/schema.prisma",
     "db:migrate:sqlite-to-postgres": "ts-node --transpile-only scripts/migrate-sqlite-to-postgres.ts",
     "db:setup": "echo \"db:setup is for local SQLite legacy only — use prisma migrate deploy for production Postgres\" && exit 1"

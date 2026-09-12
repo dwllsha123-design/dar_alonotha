@@ -30,8 +30,8 @@ export class FacebookPagesController {
 
   @Get(':id')
   @RequirePermissions(PERMISSIONS.FACEBOOK_PAGES_VIEW)
-  findOne(@Param('id') id: string) {
-    return this.facebookPagesService.findOne(id);
+  findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.facebookPagesService.findOne(user, id);
   }
 
   @Post()

@@ -236,6 +236,10 @@ export class UsersService {
       data: { status: 'INACTIVE' },
       select: { id: true, name: true, status: true },
     });
+    await this.prisma.authSession.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
     await this.prisma.auditLog.create({
       data: {
         userId: actor.id,
@@ -255,9 +259,13 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id);
+    const before = await this.prisma.user.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (!before) throw new NotFoundException('المستخدم غير موجود');
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       if (dto.roleCodes !== undefined) {
         if (!Array.isArray(dto.roleCodes) || dto.roleCodes.length === 0) {
           // omit empty → preserve roles (do not wipe)
@@ -294,6 +302,20 @@ export class UsersService {
         },
       });
     });
+
+    // Immediate session kill when account leaves ACTIVE
+    if (
+      dto.status &&
+      dto.status !== 'ACTIVE' &&
+      before.status === 'ACTIVE'
+    ) {
+      await this.prisma.authSession.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+
+    return updated;
   }
 
   async myPayroll(user: AuthUser) {

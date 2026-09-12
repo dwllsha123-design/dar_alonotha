@@ -25,6 +25,7 @@ import { CommissionsPage } from '@/features/marketing/CommissionsPage';
 import { BannersPage } from '@/features/marketing/BannersPage';
 import { UsersPage } from '@/features/users/UsersPage';
 import { MyPayrollPage } from '@/features/users/MyPayrollPage';
+import { AccountPage } from '@/features/users/AccountPage';
 import { AuditPage } from '@/features/audit/AuditPage';
 import { RegisterMarketerPage } from '@/features/marketing/RegisterMarketerPage';
 import { DeliveryZonesPage } from '@/features/delivery/DeliveryZonesPage';
@@ -127,6 +128,7 @@ export default function App() {
           <Route path="banners" element={<BannersPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="my-payroll" element={<MyPayrollPage />} />
+          <Route path="account" element={<AccountPage />} />
           <Route path="audit" element={<AuditPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
