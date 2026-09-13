@@ -1,8 +1,11 @@
 ﻿import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { api } from '@/api/client';
+import { api, money } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+
+type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'REFUNDED' | string;
+type PaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'COD' | 'OTHER' | string;
 
 type OrderCard = {
   id: string;
@@ -16,8 +19,21 @@ type OrderCard = {
   localStatus?: string | null;
   status: string;
   totalAmount: string | number;
+  paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod;
   items: Array<{ productName: string; quantity: number }>;
 };
+
+function isPrepaid(paymentStatus?: PaymentStatus) {
+  return paymentStatus === 'PAID';
+}
+
+function paymentLabel(paymentStatus?: PaymentStatus) {
+  if (paymentStatus === 'PAID') return 'خالصة (مدفوعة مسبقاً)';
+  if (paymentStatus === 'PARTIAL') return 'مدفوعة جزئياً — أكمل التحصيل عند الاستلام';
+  if (paymentStatus === 'REFUNDED') return 'مسترجعة';
+  return 'الدفع عند الاستلام';
+}
 
 export function DriverPortalPage() {
   const { user, loading, logout } = useAuth();
@@ -201,29 +217,54 @@ export function DriverPortalPage() {
       ) : null}
 
       <div className="stack">
-        {current.map((o) => (
-          <article key={o.id} className="panel stack">
-            <strong>{o.orderNumber}</strong>
-            <div>{o.shippingName} — {o.shippingPhone}</div>
-            <div className="muted">{[o.address, o.area, o.city].filter(Boolean).join(' — ')}</div>
-            <div>{o.items.map((i) => `${i.productName} ×${i.quantity}`).join('، ')}</div>
-            {tab === 'new' ? (
-              <button className="btn" type="button" onClick={() => setStatus(o.id, 'OUT_FOR_DELIVERY')}>
-                استلام والانطلاق
-              </button>
-            ) : null}
-            {tab === 'way' ? (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn" type="button" onClick={() => setStatus(o.id, 'DELIVERED')}>
-                  تم التوصيل
-                </button>
-                <button className="btn secondary" type="button" onClick={() => setStatus(o.id, 'FAILED')}>
-                  تعذر الاستلام
-                </button>
+        {current.map((o) => {
+          const prepaid = isPrepaid(o.paymentStatus);
+          const collectAmount = prepaid ? 0 : Number(o.totalAmount || 0);
+          return (
+            <article key={o.id} className="panel stack">
+              <strong>{o.orderNumber}</strong>
+              <div>{o.shippingName} — {o.shippingPhone}</div>
+              <div className="muted">{[o.address, o.area, o.city].filter(Boolean).join(' — ')}</div>
+              <div>{o.items.map((i) => `${i.productName} ×${i.quantity}`).join('، ')}</div>
+
+              <div className={`driver-pay ${prepaid ? 'is-paid' : 'is-cod'}`}>
+                <span className={`badge ${prepaid ? 'success' : 'warning'}`}>
+                  {paymentLabel(o.paymentStatus)}
+                </span>
+                {prepaid ? (
+                  <div className="driver-pay-amount">
+                    <span className="muted">لا يوجد مبلغ للتحصيل</span>
+                    <strong className="driver-pay-value muted">{money(0)}</strong>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      إجمالي الطلبية: {money(o.totalAmount)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="driver-pay-amount">
+                    <span>المبلغ المطلوب تحصيله</span>
+                    <strong className="driver-pay-value">{money(collectAmount)}</strong>
+                  </div>
+                )}
               </div>
-            ) : null}
-          </article>
-        ))}
+
+              {tab === 'new' ? (
+                <button className="btn" type="button" onClick={() => setStatus(o.id, 'OUT_FOR_DELIVERY')}>
+                  استلام والانطلاق
+                </button>
+              ) : null}
+              {tab === 'way' ? (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn" type="button" onClick={() => setStatus(o.id, 'DELIVERED')}>
+                    تم التوصيل
+                  </button>
+                  <button className="btn secondary" type="button" onClick={() => setStatus(o.id, 'FAILED')}>
+                    تعذر الاستلام
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
         {!current.length && tab !== 'return' ? <div className="empty">لا توجد طلبات في هذا القسم</div> : null}
       </div>
     </div>

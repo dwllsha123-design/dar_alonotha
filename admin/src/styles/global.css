@@ -1185,6 +1185,35 @@ input:focus, select:focus, textarea:focus {
 }
 .driver-tiles b { font-size: 18px; }
 
+.driver-pay {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1.5px solid #c4b49a;
+  background: #faf7f1;
+}
+.driver-pay.is-cod {
+  border-color: #c9a227;
+  background: #fff8e8;
+}
+.driver-pay.is-paid {
+  border-color: #8fbf9a;
+  background: #f1faf3;
+}
+.driver-pay-amount {
+  display: grid;
+  gap: 2px;
+}
+.driver-pay-value {
+  font-size: 1.35rem;
+  letter-spacing: 0.01em;
+  color: #1c1408;
+}
+.driver-pay.is-cod .driver-pay-value {
+  color: #6f5618;
+}
+
 .error { color: var(--danger); margin: 8px 0; font-size: 14px; }
 .success { color: var(--success, #1b7f4e); margin: 8px 0; font-size: 14px; }
 .empty { padding: 28px; text-align: center; color: var(--on-surface-variant); }
