@@ -872,6 +872,68 @@ export class OrdersService {
     return enriched;
   }
 
+  /**
+   * Hard-delete an order. Restores stock when previously deducted,
+   * voids commissions, then removes the order (cascades items/deliveries/invoice).
+   * Delivered orders cannot be deleted.
+   */
+  async remove(user: AuthUser, id: string) {
+    const order = await this.findOne(user, id);
+
+    if (order.status === 'DELIVERED') {
+      throw new BadRequestException('لا يمكن حذف طلب تم تسليمه');
+    }
+
+    try {
+      await this.commissions.voidForOrder(id, 'order_deleted');
+    } catch {
+      /* لا نمنع الحذف إذا فشل إبطال العمولة */
+    }
+
+    await this.inventory.withTransaction(async (tx) => {
+      if (order.stockDeductedAt && !order.returnedToStockAt) {
+        const warehouseId =
+          order.warehouseId || (await this.inventory.defaultWarehouseId(tx));
+        for (const item of order.items) {
+          if (!item.variantId) continue;
+          const variant = await tx.productVariant.findUnique({
+            where: { id: item.variantId },
+            include: { product: true },
+          });
+          if (!variant?.product.isTrackStock) continue;
+          await this.inventory.returnToStock({
+            tx,
+            warehouseId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            actorId: user.id,
+            orderId: order.id,
+            reference: order.orderBarcode,
+            reason: 'order_delete',
+          });
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'order.delete',
+          entityType: 'Order',
+          entityId: id,
+          meta: {
+            orderNumber: order.orderNumber,
+            status: order.status,
+            totalAmount: String(order.totalAmount),
+          },
+        },
+      });
+
+      await tx.order.delete({ where: { id } });
+    });
+
+    return { ok: true, id, orderNumber: order.orderNumber };
+  }
+
   private async notifyLowStockForOrder(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },

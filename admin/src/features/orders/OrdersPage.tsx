@@ -88,6 +88,7 @@ export function OrdersPage() {
   const { user, hasPermission, isOwner } = useAuth();
   const pageEmployee = isFacebookPageEmployee(user);
   const canEditOrder = isOwner || hasPermission('orders.edit');
+  const canDeleteOrder = canEditOrder;
   const outlet = useOutletContext<{ selectedFacebookPageId?: string } | undefined>();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get('focus') || '';
@@ -106,6 +107,7 @@ export function OrdersPage() {
   const [selectedCourierId, setSelectedCourierId] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!pageEmployee) return;
@@ -186,6 +188,32 @@ export function OrdersPage() {
       setError(err instanceof Error ? err.message : 'فشل التعيين');
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function deleteOrder(o: Order) {
+    if (o.status === 'DELIVERED') {
+      setError('لا يمكن حذف طلب تم تسليمه');
+      return;
+    }
+    const ok = window.confirm(
+      `حذف الطلب ${o.orderNumber}؟\nسيتم إرجاع المخزون إن وُجد، ولا يمكن التراجع عن الحذف.`,
+    );
+    if (!ok) return;
+    setError('');
+    setMsg('');
+    setDeletingId(o.id);
+    try {
+      await api(`/orders/${o.id}`, { method: 'DELETE' });
+      if (editingId === o.id) setEditingId(null);
+      if (expandedId === o.id) setExpandedId(null);
+      if (assigningId === o.id) cancelAssign();
+      setMsg(`تم حذف الطلب ${o.orderNumber}`);
+      await refreshOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل حذف الطلب');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -418,6 +446,16 @@ export function OrdersPage() {
                               }}
                             >
                               تعديل الطلب
+                            </button>
+                          ) : null}
+                          {canDeleteOrder && o.status !== 'DELIVERED' ? (
+                            <button
+                              type="button"
+                              className="btn danger sm"
+                              disabled={deletingId === o.id || busyId === o.id}
+                              onClick={() => deleteOrder(o)}
+                            >
+                              {deletingId === o.id ? 'جاري الحذف…' : 'حذف الطلب'}
                             </button>
                           ) : null}
                           {canPrintWaybill(o) ? (
