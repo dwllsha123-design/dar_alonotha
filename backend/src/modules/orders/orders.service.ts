@@ -7,7 +7,7 @@ import {
 import { OrderSource, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
-import { CreateOrderDto, UpdateOrderStatusDto } from './dto/order.dto';
+import { CreateOrderDto, UpdateOrderDto, UpdateOrderStatusDto } from './dto/order.dto';
 import { CentralInventoryService } from '../inventory/services/central-inventory.service';
 import { retailOf } from '../../common/pricing/price-policy';
 import { CommissionsService } from '../commissions/commissions.service';
@@ -624,6 +624,252 @@ export class OrdersService {
     }
 
     return updated;
+  }
+
+  /**
+   * PATCH order details. Omitted fields are preserved.
+   * `items` is applied only when explicitly provided (full replace of lines).
+   */
+  async update(user: AuthUser, id: string, dto: UpdateOrderDto) {
+    const order = await this.findOne(user, id);
+
+    if (order.status === 'CANCELLED') {
+      throw new BadRequestException('لا يمكن تعديل طلب ملغى');
+    }
+
+    const wantsItems = dto.items !== undefined;
+    if (wantsItems) {
+      if (['DELIVERED', 'OUT_FOR_DELIVERY'].includes(order.status)) {
+        throw new BadRequestException(
+          'لا يمكن تعديل منتجات طلب قيد التوصيل أو مُسلَّم',
+        );
+      }
+      if (!dto.items?.length) {
+        throw new BadRequestException('يجب أن يحتوي الطلب على منتج واحد على الأقل');
+      }
+    }
+
+    const updated = await this.inventory.withTransaction(async (tx) => {
+      const data: Prisma.OrderUpdateInput = {};
+
+      if (dto.shippingName !== undefined) data.shippingName = dto.shippingName.trim();
+      if (dto.shippingPhone !== undefined) data.shippingPhone = dto.shippingPhone.trim();
+      if (dto.city !== undefined) data.city = dto.city.trim() || null;
+      if (dto.area !== undefined) data.area = dto.area.trim() || null;
+      if (dto.address !== undefined) data.address = dto.address.trim() || null;
+      if (dto.landmark !== undefined) data.landmark = dto.landmark.trim() || null;
+      if (dto.notes !== undefined) data.notes = dto.notes.trim() || null;
+      if (dto.deliveryGender !== undefined) data.deliveryGender = dto.deliveryGender;
+      if (dto.discountAmount !== undefined) data.discountAmount = dto.discountAmount;
+      if (dto.deliveryFee !== undefined) data.deliveryFee = dto.deliveryFee;
+
+      let nextLines:
+        | Array<{
+            variantId: string | null;
+            productName: string;
+            variantName: string | null;
+            sku: string | null;
+            imageUrl: string | null;
+            quantity: number;
+            unitPrice: number;
+            discount: number;
+            lineTotal: number;
+            trackStock: boolean;
+          }>
+        | undefined;
+
+      if (wantsItems) {
+        nextLines = [];
+        for (const raw of dto.items!) {
+          const qty = Math.max(1, Math.floor(Number(raw.quantity)));
+          if (raw.id) {
+            const existing = order.items.find((i) => i.id === raw.id);
+            if (!existing) {
+              throw new BadRequestException(`بند غير موجود في الطلب: ${raw.id}`);
+            }
+            const unitPrice =
+              raw.unitPrice != null && Number.isFinite(Number(raw.unitPrice))
+                ? Number(raw.unitPrice)
+                : Number(existing.unitPrice);
+            const discount =
+              raw.discount != null && Number.isFinite(Number(raw.discount))
+                ? Number(raw.discount)
+                : Number(existing.discount || 0);
+            const lineTotal = qty * unitPrice - discount;
+            let trackStock = false;
+            if (existing.variantId) {
+              const variant = await tx.productVariant.findUnique({
+                where: { id: existing.variantId },
+                include: { product: true },
+              });
+              trackStock = Boolean(variant?.product.isTrackStock);
+            }
+            nextLines.push({
+              variantId: existing.variantId,
+              productName: raw.productName?.trim() || existing.productName,
+              variantName:
+                raw.variantName !== undefined
+                  ? raw.variantName
+                  : existing.variantName,
+              sku: raw.sku !== undefined ? raw.sku : existing.sku,
+              imageUrl:
+                raw.imageUrl !== undefined ? raw.imageUrl : existing.imageUrl,
+              quantity: qty,
+              unitPrice,
+              discount,
+              lineTotal,
+              trackStock,
+            });
+            continue;
+          }
+
+          if (!raw.variantId) {
+            throw new BadRequestException(
+              'البند الجديد يحتاج variantId أو id لبند قائم',
+            );
+          }
+          const variant = await tx.productVariant.findUnique({
+            where: { id: raw.variantId },
+            include: {
+              product: { include: { images: { orderBy: { sortOrder: 'asc' } } } },
+            },
+          });
+          if (!variant || !variant.isActive) {
+            throw new NotFoundException('منتج غير متوفر');
+          }
+          const retail = retailOf(variant);
+          const unitPrice =
+            raw.unitPrice != null && Number.isFinite(Number(raw.unitPrice))
+              ? Number(raw.unitPrice)
+              : retail;
+          const discount = raw.discount ?? 0;
+          const lineTotal = qty * unitPrice - discount;
+          nextLines.push({
+            variantId: variant.id,
+            productName: raw.productName || variant.product.nameAr,
+            variantName:
+              raw.variantName ||
+              variant.nameAr ||
+              [variant.color, variant.size].filter(Boolean).join(' / ') ||
+              null,
+            sku: raw.sku || variant.sku,
+            imageUrl: raw.imageUrl || resolveVariantImageUrl(variant),
+            quantity: qty,
+            unitPrice,
+            discount,
+            lineTotal,
+            trackStock: Boolean(variant.product.isTrackStock),
+          });
+        }
+
+        const subtotal = nextLines.reduce((s, i) => s + Number(i.lineTotal), 0);
+        const discountAmount =
+          dto.discountAmount !== undefined
+            ? Number(dto.discountAmount)
+            : Number(order.discountAmount || 0);
+        const deliveryFee =
+          dto.deliveryFee !== undefined
+            ? Number(dto.deliveryFee)
+            : Number(order.deliveryFee || 0);
+        data.subtotal = subtotal;
+        data.discountAmount = discountAmount;
+        data.deliveryFee = deliveryFee;
+        data.totalAmount = subtotal - discountAmount + deliveryFee;
+
+        // Stock: return old lines then deduct new ones when already deducted
+        if (order.stockDeductedAt && !order.returnedToStockAt) {
+          const warehouseId =
+            order.warehouseId || (await this.inventory.defaultWarehouseId(tx));
+          for (const old of order.items) {
+            if (!old.variantId) continue;
+            const variant = await tx.productVariant.findUnique({
+              where: { id: old.variantId },
+              include: { product: true },
+            });
+            if (!variant?.product.isTrackStock) continue;
+            await this.inventory.returnToStock({
+              tx,
+              warehouseId,
+              variantId: old.variantId,
+              quantity: old.quantity,
+              actorId: user.id,
+              orderId: order.id,
+              reference: order.orderBarcode,
+              reason: 'order_edit_return',
+            });
+          }
+          for (const line of nextLines) {
+            if (!line.variantId || !line.trackStock) continue;
+            await this.inventory.sale({
+              tx,
+              warehouseId,
+              variantId: line.variantId,
+              quantity: line.quantity,
+              actorId: user.id,
+              orderId: order.id,
+              reference: order.orderBarcode,
+              reason: 'order_edit_sale',
+            });
+          }
+        }
+
+        await tx.orderItem.deleteMany({ where: { orderId: id } });
+        await tx.orderItem.createMany({
+          data: nextLines.map(({ trackStock: _t, ...line }) => ({
+            ...line,
+            orderId: id,
+          })),
+        });
+      } else if (dto.discountAmount !== undefined || dto.deliveryFee !== undefined) {
+        const subtotal = Number(order.subtotal || 0);
+        const discountAmount =
+          dto.discountAmount !== undefined
+            ? Number(dto.discountAmount)
+            : Number(order.discountAmount || 0);
+        const deliveryFee =
+          dto.deliveryFee !== undefined
+            ? Number(dto.deliveryFee)
+            : Number(order.deliveryFee || 0);
+        data.totalAmount = subtotal - discountAmount + deliveryFee;
+      }
+
+      if (Object.keys(data).length === 0 && !wantsItems) {
+        return order;
+      }
+
+      await tx.order.update({ where: { id }, data });
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'order.update',
+          entityType: 'Order',
+          entityId: id,
+          meta: {
+            fields: Object.keys(dto).filter(
+              (k) => (dto as Record<string, unknown>)[k] !== undefined,
+            ),
+            itemsReplaced: wantsItems,
+          },
+        },
+      });
+
+      return tx.order.findUnique({
+        where: { id },
+        include: {
+          customer: true,
+          items: true,
+          facebookPage: true,
+          salesAgent: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, name: true } },
+          deliveries: true,
+          courier: { select: { id: true, name: true } },
+        },
+      });
+    });
+
+    const [enriched] = await this.enrichOrdersWithItemImages([updated!]);
+    return enriched;
   }
 
   private async notifyLowStockForOrder(orderId: string) {
