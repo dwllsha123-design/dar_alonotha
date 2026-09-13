@@ -171,3 +171,98 @@ export class UpdateOrderStatusDto {
   @IsString()
   notes?: string;
 }
+
+/** Existing line (by id) and/or new line (by variantId). Omitted `items` = leave lines unchanged. */
+export class UpdateOrderItemDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsOptional()
+  @IsString()
+  variantId?: string;
+
+  @IsOptional()
+  @IsString()
+  productName?: string;
+
+  @IsOptional()
+  @IsString()
+  variantName?: string;
+
+  @IsOptional()
+  @IsString()
+  sku?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
+
+  @IsNumber()
+  @Min(1)
+  quantity!: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discount?: number;
+}
+
+/**
+ * PATCH /orders/:id — omit a field to preserve it.
+ * Sending `items` explicitly replaces all order lines (never omit-as-delete).
+ */
+export class UpdateOrderDto {
+  @IsOptional()
+  @IsString()
+  shippingName?: string;
+
+  @IsOptional()
+  @IsString()
+  shippingPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  landmark?: string;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsIn(['MALE', 'FEMALE'])
+  deliveryGender?: 'MALE' | 'FEMALE';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  deliveryFee?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UpdateOrderItemDto)
+  items?: UpdateOrderItemDto[];
+}

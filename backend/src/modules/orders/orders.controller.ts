@@ -10,7 +10,11 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OrderSource } from '@prisma/client';
 import { OrdersService } from './orders.service';
-import { CreateOrderDto, UpdateOrderStatusDto } from './dto/order.dto';
+import {
+  CreateOrderDto,
+  UpdateOrderDto,
+  UpdateOrderStatusDto,
+} from './dto/order.dto';
 import { RequirePermissions } from '../../common/decorators/auth.decorators';
 import { PERMISSIONS } from '../../common/permissions';
 import {
@@ -63,5 +67,15 @@ export class OrdersController {
     @Body() dto: UpdateOrderStatusDto,
   ) {
     return this.ordersService.updateStatus(user, id, dto);
+  }
+
+  @Patch(':id')
+  @RequirePermissions(PERMISSIONS.ORDERS_EDIT)
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+  ) {
+    return this.ordersService.update(user, id, dto);
   }
 }
