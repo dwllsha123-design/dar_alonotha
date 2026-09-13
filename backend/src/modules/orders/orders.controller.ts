@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -77,5 +78,11 @@ export class OrdersController {
     @Body() dto: UpdateOrderDto,
   ) {
     return this.ordersService.update(user, id, dto);
+  }
+
+  @Delete(':id')
+  @RequirePermissions(PERMISSIONS.ORDERS_EDIT)
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.ordersService.remove(user, id);
   }
 }
