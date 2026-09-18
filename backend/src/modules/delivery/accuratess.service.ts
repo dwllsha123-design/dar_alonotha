@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeliveryStatus } from '@prisma/client';
+import { TRIPOLI_AREAS } from '../../common/delivery/delivery-zones';
 import {
   asAccuratessShipmentId,
   asAccuratessTrackingCode,
@@ -545,6 +546,35 @@ export class AccuratessService {
     return n.includes('طرابلس') || n.includes('tripoli');
   }
 
+  private isTripoliAreaName(name: string) {
+    const n = this.normalizeZoneName(name);
+    if (!n) return false;
+    if (!this.tripoliAreaKeys) {
+      this.tripoliAreaKeys = new Set(
+        TRIPOLI_AREAS.map((a) => this.normalizeZoneName(a.nameAr)).filter(Boolean),
+      );
+    }
+    return this.tripoliAreaKeys.has(n);
+  }
+
+  private tripoliAreaKeys: Set<string> | null = null;
+
+  /** Skip Accuratess rows that are not usable as checkout "city" options. */
+  private isNonCityZoneName(name: string) {
+    const raw = (name || '').trim();
+    if (!raw || raw.length < 2) return true;
+    if (/^\d+$/.test(raw)) return true;
+    if (/^\d+\s*(يوليو|يناير|فبراير)/i.test(raw)) return true;
+    if (this.isPaymentVariantZone(raw) || this.isTripoliZoneName(raw)) return true;
+    if (this.isTripoliAreaName(raw)) return true;
+    if (/(استلام|داخل مكتب|مكتب|بطاقة|الكترون|إلكترون|اونلاين|صباحا|نسائي|دفع)/i.test(raw)) {
+      return true;
+    }
+    // Neighborhood / street-ish rows Accuratess mixes into the flat list
+    if (/^(ارض|أرض|شارع|حي\s)/i.test(raw)) return true;
+    return false;
+  }
+
   /**
    * Destination cities for storefront/admin checkout (EXTERNAL).
    * Sourced from Accuratess zones — NOT the hardcoded EXTERNAL_CITIES list.
@@ -563,30 +593,60 @@ export class AccuratessService {
     }
 
     try {
-      // Keep checkout listing cheap: one zones query, no service discovery / child probes.
-      let zones = await this.listZonesDropdown({ active: true });
+      // Prefer root-level zones when Accuratess supports parentId filter.
+      let zones = await this.listZonesDropdown({ parentId: null, active: true });
+      if (!zones.length) {
+        zones = await this.listZonesDropdown({ parentId: 0, active: true });
+      }
+      if (!zones.length) {
+        zones = await this.listZonesDropdown({ active: true });
+      }
       if (!zones.length) {
         zones = await this.listZonesDropdown({});
       }
 
-      const candidates = zones.filter(
-        (z) =>
-          Boolean((z.name || '').trim()) &&
-          !this.isPaymentVariantZone(z.name) &&
-          !this.isTripoliZoneName(z.name),
-      );
+      let candidates = zones.filter((z) => !this.isNonCityZoneName(z.name));
+
+      // Flat mega-lists mix cities + areas: keep parents that have children.
+      // Hard time/count budget so checkout never hangs.
+      if (candidates.length > 120) {
+        const parents: AccuratessZone[] = [];
+        const sample = [...candidates].sort((a, b) => a.id - b.id).slice(0, 180);
+        const batchSize = 20;
+        const started = Date.now();
+        for (let i = 0; i < sample.length; i += batchSize) {
+          if (Date.now() - started > 2500) break;
+          const batch = sample.slice(i, i + batchSize);
+          const rows = await Promise.all(
+            batch.map(async (z) => {
+              const children = await this.listZonesDropdown({
+                parentId: z.id,
+                active: true,
+              });
+              const usable = children.filter((c) => !this.isNonCityZoneName(c.name));
+              return usable.length ? z : null;
+            }),
+          );
+          for (const z of rows) {
+            if (z) parents.push(z);
+          }
+        }
+        if (parents.length >= 8) candidates = parents;
+      }
 
       const citiesMap = new Map<string, AccuratessCheckoutCity>();
       for (const z of candidates) {
-        const nameAr = (z.name || '').trim();
+        const nameAr = (z.name || '').trim().replace(/\s+/g, ' ').replace(/\.+$/g, '').trim();
         const key = this.normalizeZoneName(nameAr);
         if (!key || citiesMap.has(key)) continue;
         citiesMap.set(key, { nameAr, areas: ['المركز', 'أخرى'] });
       }
 
-      const cities = [...citiesMap.values()].sort((a, b) =>
+      let cities = [...citiesMap.values()].sort((a, b) =>
         a.nameAr.localeCompare(b.nameAr, 'ar'),
       );
+      // Safety cap for native/browser selects
+      if (cities.length > 200) cities = cities.slice(0, 200);
 
       this.destinationCitiesCache = { at: Date.now(), cities };
       this.logger.log(`Accuratess checkout cities loaded: ${cities.length}`);

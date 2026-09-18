@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, getAttributionMeta, money } from '../api/client';
 import { useCart, useCartStock } from '../cart/CartContext';
@@ -18,6 +18,116 @@ type DeliveryCity = {
     femaleEnabled?: boolean;
   }>;
 };
+
+/** Anchored searchable list — avoids native <select> popup misplacement on long lists. */
+function SearchableSelect({
+  value,
+  options,
+  placeholder,
+  disabled,
+  required,
+  emptyLabel,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  placeholder: string;
+  disabled?: boolean;
+  required?: boolean;
+  emptyLabel?: string;
+  onChange: (next: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.toLowerCase().includes(q));
+  }, [options, query]);
+
+  return (
+    <div className={`search-select${open ? ' open' : ''}`} ref={rootRef}>
+      <button
+        type="button"
+        className="search-select-trigger"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen((v) => !v)}
+      >
+        <span className={value ? '' : 'is-placeholder'}>{value || placeholder}</span>
+      </button>
+      {/* Keep native required validation without showing the OS popup */}
+      <select
+        className="search-select-native"
+        value={value}
+        required={required}
+        disabled={disabled}
+        tabIndex={-1}
+        aria-hidden
+        onChange={() => undefined}
+      >
+        <option value="">{emptyLabel || placeholder}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      {open ? (
+        <div className="search-select-panel" role="listbox">
+          <input
+            className="search-select-filter"
+            value={query}
+            autoFocus
+            placeholder="ابحثي…"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setOpen(false);
+            }}
+          />
+          <ul className="search-select-list">
+            {filtered.length ? (
+              filtered.map((o) => (
+                <li key={o}>
+                  <button
+                    type="button"
+                    className={o === value ? 'is-active' : ''}
+                    role="option"
+                    aria-selected={o === value}
+                    onClick={() => {
+                      onChange(o);
+                      setOpen(false);
+                    }}
+                  >
+                    {o}
+                  </button>
+                </li>
+              ))
+            ) : (
+              <li className="search-select-empty">لا توجد نتائج</li>
+            )}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 type Quote = {
   deliveryFee: number;
@@ -239,38 +349,33 @@ export function CheckoutPage() {
         </label>
         <label>
           المدينة
-          <select
+          <SearchableSelect
             value={city}
-            onChange={(e) => {
-              const next = e.target.value;
+            options={cities.map((c) => c.nameAr)}
+            placeholder={cities.length ? 'اختاري المدينة' : 'جاري تحميل المدن…'}
+            disabled={!cities.length}
+            required
+            onChange={(next) => {
               setCity(next);
               const found = cities.find((c) => c.nameAr === next);
               setArea(found?.areas[0] || '');
             }}
-            required
-            disabled={!cities.length}
-          >
-            {!cities.length ? <option value="">جاري تحميل المدن…</option> : null}
-            {cities.map((c) => (
-              <option key={c.nameAr} value={c.nameAr}>
-                {c.nameAr}
-              </option>
-            ))}
-          </select>
+          />
           {citiesError ? (
             <span style={{ color: '#c45c5c', fontSize: 13 }}>{citiesError}</span>
           ) : null}
         </label>
         <label>
           المنطقة
-          <select value={area} onChange={(e) => setArea(e.target.value)} required>
-            <option value="">اختاري المنطقة</option>
-            {areas.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={area}
+            options={areas}
+            placeholder="اختاري المنطقة"
+            disabled={!areas.length}
+            required
+            emptyLabel="اختاري المنطقة"
+            onChange={setArea}
+          />
         </label>
         {requiresGender ? (
           <label style={{ gridColumn: '1 / -1' }}>

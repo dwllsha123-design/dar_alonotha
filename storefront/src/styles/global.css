@@ -1216,6 +1216,99 @@ input:focus, select:focus, textarea:focus {
   box-shadow: inset 0 -1px 0 var(--primary);
 }
 
+/* Checkout searchable selects — anchored panel (avoids native OS popup overlap) */
+.search-select {
+  position: relative;
+  width: 100%;
+}
+.search-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--outline-variant);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 12px 4px;
+  background: var(--surface-low);
+  color: var(--on-surface);
+  text-align: right;
+  cursor: pointer;
+  font: inherit;
+}
+.search-select-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.search-select.open .search-select-trigger,
+.search-select-trigger:focus {
+  border-bottom-color: var(--primary);
+  box-shadow: inset 0 -1px 0 var(--primary);
+  outline: none;
+}
+.search-select-trigger .is-placeholder {
+  color: var(--on-surface-variant);
+}
+.search-select-native {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.search-select-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: min(280px, 50vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-ambient);
+  overflow: hidden;
+}
+.search-select-filter {
+  border: 0;
+  border-bottom: 1px solid var(--outline-variant);
+  border-radius: 0;
+  padding: 10px 12px;
+  background: var(--surface-low);
+  color: var(--on-surface);
+}
+.search-select-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow: auto;
+  max-height: 220px;
+}
+.search-select-list button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--on-surface);
+  text-align: right;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.search-select-list button:hover,
+.search-select-list button.is-active {
+  background: rgba(201, 162, 39, 0.12);
+  color: var(--gold);
+}
+.search-select-empty {
+  padding: 12px;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}
+
 .table-wrap { overflow: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 14px 8px; border-bottom: 1px solid var(--outline-variant); text-align: right; }
