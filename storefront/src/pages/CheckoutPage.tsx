@@ -217,15 +217,46 @@ export function CheckoutPage() {
       .catch(() => undefined);
   }, [user, cities]);
 
-  const areas = useMemo(
-    () => cities.find((c) => c.nameAr === city)?.areas || [],
-    [cities, city],
-  );
+  const [areaOptions, setAreaOptions] = useState<string[]>([]);
+  const [areasLoading, setAreasLoading] = useState(false);
   const currentCity = cities.find((c) => c.nameAr === city);
   const requiresGender = Boolean(currentCity?.requiresGender);
   const areaDetail = currentCity?.areaDetails?.find((a) => a.nameAr === area);
   const maleEnabled = areaDetail?.maleEnabled !== false;
   const femaleEnabled = areaDetail?.femaleEnabled !== false;
+
+  useEffect(() => {
+    if (!city) {
+      setAreaOptions([]);
+      return;
+    }
+    const found = cities.find((c) => c.nameAr === city);
+    const seed = found?.areas || [];
+    setAreaOptions(seed);
+
+    // Tripoli uses local zones already on the city object.
+    if (!found || found.deliveryType === 'INTERNAL') return;
+
+    let cancelled = false;
+    setAreasLoading(true);
+    api<{ areas: string[]; source?: string }>(
+      `/store/delivery-areas?city=${encodeURIComponent(city)}`,
+    )
+      .then((d) => {
+        if (cancelled) return;
+        const next = d.areas?.length ? d.areas : seed;
+        setAreaOptions(next);
+        setArea((prev) => (prev && next.includes(prev) ? prev : next[0] || ''));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setAreasLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [city, cities]);
 
   useEffect(() => {
     if (!requiresGender) return;
@@ -369,9 +400,9 @@ export function CheckoutPage() {
           المنطقة
           <SearchableSelect
             value={area}
-            options={areas}
-            placeholder="اختاري المنطقة"
-            disabled={!areas.length}
+            options={areaOptions}
+            placeholder={areasLoading ? 'جاري تحميل المناطق…' : 'اختاري المنطقة'}
+            disabled={!areaOptions.length && areasLoading}
             required
             emptyLabel="اختاري المنطقة"
             onChange={setArea}

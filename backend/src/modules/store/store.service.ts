@@ -211,6 +211,36 @@ export class StoreService {
     };
   }
 
+  /** مناطق مدينة خارجية من Accuratess — طرابلس تبقى من قاعدة المناطق المحلية */
+  async deliveryAreas(city?: string) {
+    const cityName = (city || '').trim();
+    if (!cityName) return { city: '', areas: [] as string[], source: 'none' as const };
+
+    const zone = findDeliveryCity(cityName);
+    if (zone.mode === 'OWN_AGENTS' || cityName === 'طرابلس') {
+      const dbZones = await this.prisma.deliveryZone.findMany({
+        where: { city: 'طرابلس', isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { area: 'asc' }],
+      });
+      const areas = dbZones.length
+        ? dbZones.map((z) => z.area)
+        : TRIPOLI_AREAS.map((a) => a.nameAr);
+      return { city: 'طرابلس', areas, source: 'local' as const };
+    }
+
+    const fromCarrier = await this.accuratess.listAreasForCity(cityName);
+    if (fromCarrier.length) {
+      return { city: cityName, areas: fromCarrier, source: 'accuratess' as const };
+    }
+
+    const fallback = EXTERNAL_CITIES.find((c) => c.nameAr === cityName);
+    return {
+      city: cityName,
+      areas: fallback?.areas.map((a) => a.nameAr) || ['المركز', 'أخرى'],
+      source: 'fallback' as const,
+    };
+  }
+
   async resolveDelivery(city?: string, area?: string, gender?: string) {
     const company = await this.company();
     const zone = findDeliveryCity(city);

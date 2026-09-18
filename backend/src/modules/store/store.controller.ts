@@ -47,6 +47,12 @@ export class StoreController {
   }
 
   @Public()
+  @Get('delivery-areas')
+  deliveryAreas(@Query('city') city?: string) {
+    return this.storeService.deliveryAreas(city);
+  }
+
+  @Public()
   @Get('delivery-quote')
   deliveryQuote(
     @Query('city') city?: string,

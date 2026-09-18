@@ -80,6 +80,7 @@ export class AccuratessService {
     at: number;
     cities: AccuratessCheckoutCity[];
   } | null = null;
+  private cityAreasCache = new Map<string, { at: number; areas: string[] }>();
   private static readonly DESTINATION_CITIES_TTL_MS = 30 * 60 * 1000;
 
   constructor(private readonly config: ConfigService) {}
@@ -609,6 +610,7 @@ export class AccuratessService {
 
       // Flat mega-lists mix cities + areas: keep parents that have children.
       // Hard time/count budget so checkout never hangs.
+      const areasByZoneId = new Map<number, string[]>();
       if (candidates.length > 120) {
         const parents: AccuratessZone[] = [];
         const sample = [...candidates].sort((a, b) => a.id - b.id).slice(0, 180);
@@ -623,8 +625,10 @@ export class AccuratessService {
                 parentId: z.id,
                 active: true,
               });
-              const usable = children.filter((c) => !this.isNonCityZoneName(c.name));
-              return usable.length ? z : null;
+              const areas = this.areaNamesFromZones(children);
+              if (!areas.length) return null;
+              areasByZoneId.set(z.id, areas);
+              return z;
             }),
           );
           for (const z of rows) {
@@ -639,7 +643,11 @@ export class AccuratessService {
         const nameAr = (z.name || '').trim().replace(/\s+/g, ' ').replace(/\.+$/g, '').trim();
         const key = this.normalizeZoneName(nameAr);
         if (!key || citiesMap.has(key)) continue;
-        citiesMap.set(key, { nameAr, areas: ['المركز', 'أخرى'] });
+        const areas = areasByZoneId.get(z.id);
+        citiesMap.set(key, {
+          nameAr,
+          areas: areas?.length ? areas : ['المركز', 'أخرى'],
+        });
       }
 
       let cities = [...citiesMap.values()].sort((a, b) =>
@@ -655,6 +663,59 @@ export class AccuratessService {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Accuratess checkout cities failed: ${message}`);
       return this.destinationCitiesCache?.cities || [];
+    }
+  }
+
+  private areaNamesFromZones(zones: AccuratessZone[]) {
+    const names = zones
+      .filter((z) => !this.isPaymentVariantZone(z.name))
+      .map((z) => (z.name || '').trim().replace(/\s+/g, ' ').replace(/\.+$/g, '').trim())
+      .filter(Boolean);
+    return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'ar'));
+  }
+
+  /**
+   * Accuratess subzones/areas for a destination city (lazy checkout load).
+   * Never returns tokens or credentials.
+   */
+  async listAreasForCity(cityName: string): Promise<string[]> {
+    const needle = (cityName || '').trim();
+    if (!needle || !this.isConfigured() || this.isTripoliZoneName(needle)) {
+      return [];
+    }
+
+    const cacheKey = this.normalizeZoneName(needle);
+    const hit = this.cityAreasCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < AccuratessService.DESTINATION_CITIES_TTL_MS) {
+      return hit.areas;
+    }
+
+    try {
+      let matches = await this.listZonesDropdown({ name: needle, active: true });
+      if (!matches.length) {
+        matches = await this.listZonesDropdown({ name: needle });
+      }
+      const zone = this.pickBestZone(matches, needle);
+      if (!zone) {
+        this.cityAreasCache.set(cacheKey, { at: Date.now(), areas: [] });
+        return [];
+      }
+
+      let children = await this.listZonesDropdown({
+        parentId: zone.id,
+        active: true,
+      });
+      if (!children.length) {
+        children = await this.listZonesDropdown({ parentId: zone.id });
+      }
+
+      const areas = this.areaNamesFromZones(children);
+      this.cityAreasCache.set(cacheKey, { at: Date.now(), areas });
+      return areas;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Accuratess areas for city="${needle}" failed: ${message}`);
+      return hit?.areas || [];
     }
   }
 
