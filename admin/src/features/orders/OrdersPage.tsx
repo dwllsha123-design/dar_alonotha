@@ -2,6 +2,7 @@
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { api, money, sourceLabel, statusBadgeClass, statusLabel } from '@/api/client';
 import { isFacebookPageEmployee, useAuth } from '@/auth/AuthContext';
+import { EditOrderModal } from './EditOrderModal';
 
 type OrderItem = {
   id: string;
@@ -23,6 +24,10 @@ type Order = {
   shippingName?: string;
   shippingPhone?: string;
   city?: string;
+  area?: string;
+  address?: string;
+  landmark?: string;
+  notes?: string;
   createdAt: string;
   pagePublicCode?: number | null;
   deliveryType?: string;
@@ -80,8 +85,10 @@ const STATUS_TABS = [
 ];
 
 export function OrdersPage() {
-  const { user } = useAuth();
+  const { user, hasPermission, isOwner } = useAuth();
   const pageEmployee = isFacebookPageEmployee(user);
+  const canEditOrder = isOwner || hasPermission('orders.edit');
+  const canDeleteOrder = canEditOrder;
   const outlet = useOutletContext<{ selectedFacebookPageId?: string } | undefined>();
   const [searchParams] = useSearchParams();
   const focusId = searchParams.get('focus') || '';
@@ -99,6 +106,8 @@ export function OrdersPage() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [selectedCourierId, setSelectedCourierId] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!pageEmployee) return;
@@ -179,6 +188,32 @@ export function OrdersPage() {
       setError(err instanceof Error ? err.message : 'فشل التعيين');
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function deleteOrder(o: Order) {
+    if (o.status === 'DELIVERED') {
+      setError('لا يمكن حذف طلب تم تسليمه');
+      return;
+    }
+    const ok = window.confirm(
+      `حذف الطلب ${o.orderNumber}؟\nسيتم إرجاع المخزون إن وُجد، ولا يمكن التراجع عن الحذف.`,
+    );
+    if (!ok) return;
+    setError('');
+    setMsg('');
+    setDeletingId(o.id);
+    try {
+      await api(`/orders/${o.id}`, { method: 'DELETE' });
+      if (editingId === o.id) setEditingId(null);
+      if (expandedId === o.id) setExpandedId(null);
+      if (assigningId === o.id) cancelAssign();
+      setMsg(`تم حذف الطلب ${o.orderNumber}`);
+      await refreshOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'فشل حذف الطلب');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -399,79 +434,103 @@ export function OrdersPage() {
                         {new Date(o.createdAt).toLocaleString('ar-LY')}
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
-                        {canPrintWaybill(o) ? (
-                          <Link
-                            className="btn secondary sm"
-                            to={`/delivery/print?orderIds=${o.id}`}
-                            target="_blank"
-                          >
-                            طباعة البوليصة
-                          </Link>
-                        ) : assigningId === o.id ? (
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: 6,
-                              minWidth: 180,
-                            }}
-                          >
-                            {!isExternalOrder(o) ? (
-                              <select
-                                value={selectedCourierId}
-                                onChange={(e) => setSelectedCourierId(e.target.value)}
-                                style={{ height: 32, padding: '0 8px' }}
-                                disabled={busyId === o.id}
-                              >
-                                <option value="">اختر المندوب</option>
-                                {activeCouriers.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                    {c.phone ? ` — ${c.phone}` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="muted" style={{ fontSize: 12 }}>
-                                خارج طرابلس → Accuratess
-                              </span>
-                            )}
-                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                              <button
-                                type="button"
-                                className="btn sm"
-                                disabled={
-                                  busyId === o.id ||
-                                  (!isExternalOrder(o) && !selectedCourierId)
-                                }
-                                onClick={() => confirmAssign(o)}
-                              >
-                                {busyId === o.id ? 'جاري…' : 'تأكيد'}
-                              </button>
-                              <button
-                                type="button"
-                                className="btn secondary sm"
-                                disabled={busyId === o.id}
-                                onClick={cancelAssign}
-                              >
-                                إلغاء
-                              </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 150 }}>
+                          {canEditOrder ? (
+                            <button
+                              type="button"
+                              className="btn secondary sm"
+                              onClick={() => {
+                                setError('');
+                                setMsg('');
+                                setEditingId(o.id);
+                              }}
+                            >
+                              تعديل الطلب
+                            </button>
+                          ) : null}
+                          {canDeleteOrder && o.status !== 'DELIVERED' ? (
+                            <button
+                              type="button"
+                              className="btn danger sm"
+                              disabled={deletingId === o.id || busyId === o.id}
+                              onClick={() => deleteOrder(o)}
+                            >
+                              {deletingId === o.id ? 'جاري الحذف…' : 'حذف الطلب'}
+                            </button>
+                          ) : null}
+                          {canPrintWaybill(o) ? (
+                            <Link
+                              className="btn secondary sm"
+                              to={`/delivery/print?orderIds=${o.id}`}
+                              target="_blank"
+                            >
+                              طباعة البوليصة
+                            </Link>
+                          ) : assigningId === o.id ? (
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 6,
+                              }}
+                            >
+                              {!isExternalOrder(o) ? (
+                                <select
+                                  value={selectedCourierId}
+                                  onChange={(e) => setSelectedCourierId(e.target.value)}
+                                  style={{ height: 32, padding: '0 8px' }}
+                                  disabled={busyId === o.id}
+                                >
+                                  <option value="">اختر المندوب</option>
+                                  {activeCouriers.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                      {c.phone ? ` — ${c.phone}` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="muted" style={{ fontSize: 12 }}>
+                                  خارج طرابلس → Accuratess
+                                </span>
+                              )}
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  className="btn sm"
+                                  disabled={
+                                    busyId === o.id ||
+                                    (!isExternalOrder(o) && !selectedCourierId)
+                                  }
+                                  onClick={() => confirmAssign(o)}
+                                >
+                                  {busyId === o.id ? 'جاري…' : 'تأكيد'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn secondary sm"
+                                  disabled={busyId === o.id}
+                                  onClick={cancelAssign}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                              {!isExternalOrder(o) && !activeCouriers.length ? (
+                                <span className="muted" style={{ fontSize: 12 }}>
+                                  لا يوجد مندوبون نشطون — أضيفي من صفحة التوصيل
+                                </span>
+                              ) : null}
                             </div>
-                            {!isExternalOrder(o) && !activeCouriers.length ? (
-                              <span className="muted" style={{ fontSize: 12 }}>
-                                لا يوجد مندوبون نشطون — أضيفي من صفحة التوصيل
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn sm"
-                            onClick={() => startAssign(o.id)}
-                          >
-                            تعيين مندوب
-                          </button>
-                        )}
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn sm"
+                              onClick={() => startAssign(o.id)}
+                            >
+                              تعيين مندوب
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     {open ? (
@@ -569,6 +628,22 @@ export function OrdersPage() {
           </table>
         </div>
       </div>
+
+      {editingId ? (
+        <EditOrderModal
+          orderId={editingId}
+          onClose={() => setEditingId(null)}
+          onSaved={async () => {
+            setEditingId(null);
+            setMsg('تم حفظ تعديلات الطلب');
+            try {
+              await refreshOrders();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'تعذر تحديث القائمة');
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }

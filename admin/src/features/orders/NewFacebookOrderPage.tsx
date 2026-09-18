@@ -1,20 +1,30 @@
-﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
+﻿import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { api } from '@/api/client';
 import { isFacebookPageEmployee, useAuth } from '@/auth/AuthContext';
+
+type ProductImage = {
+  url: string;
+  isPrimary?: boolean;
+  sortOrder?: number;
+  color?: string | null;
+};
 
 type Page = { id: string; name: string };
 type Product = {
   id: string;
   nameAr: string;
+  images?: ProductImage[];
   variants: Array<{
     id: string;
     sku: string;
     price: string | number;
     retailPrice?: string | number;
     nameAr?: string;
-    color?: string;
-    size?: string;
+    color?: string | null;
+    size?: string | null;
+    imageUrl?: string | null;
+    available?: number;
     availableQty?: number;
   }>;
 };
@@ -26,11 +36,34 @@ type Line = {
   sku: string;
   quantity: number;
   unitPrice: number;
+  listPrice: number;
+  imageUrl?: string | null;
 };
 
 type OutletCtx = { selectedFacebookPageId?: string };
 
 const PAGE_STORAGE_KEY = 'selectedFacebookPageId';
+
+function resolveVariantThumb(
+  product: Product,
+  variant: Product['variants'][number],
+): string | null {
+  if (variant.imageUrl?.trim()) return variant.imageUrl.trim();
+  const images = product.images || [];
+  const color = variant.color?.trim();
+  if (color) {
+    const byColor = images
+      .filter((i) => i.color === color)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    if (byColor[0]?.url) return byColor[0].url;
+  }
+  const sorted = [...images].sort(
+    (a, b) =>
+      Number(Boolean(b.isPrimary)) - Number(Boolean(a.isPrimary)) ||
+      (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+  );
+  return sorted[0]?.url || null;
+}
 
 export function NewFacebookOrderPage() {
   const { user } = useAuth();
@@ -38,6 +71,7 @@ export function NewFacebookOrderPage() {
   const outlet = useOutletContext<OutletCtx | undefined>();
   const pageEmployee = isFacebookPageEmployee(user);
   const assignedPages = user?.facebookPages || [];
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   const [pages, setPages] = useState<Page[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -74,6 +108,9 @@ export function NewFacebookOrderPage() {
   const [notes, setNotes] = useState('');
   const [selectedVariant, setSelectedVariant] = useState('');
   const [qty, setQty] = useState(1);
+  const [unitPriceInput, setUnitPriceInput] = useState<number | ''>('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
 
   useEffect(() => {
@@ -126,6 +163,17 @@ export function NewFacebookOrderPage() {
     }
   }, [outlet?.selectedFacebookPageId, pageEmployee, assignedPages]);
 
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function onDocPointerDown(e: MouseEvent) {
+      if (!pickerRef.current?.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocPointerDown);
+    return () => document.removeEventListener('mousedown', onDocPointerDown);
+  }, [pickerOpen]);
+
   const areas = useMemo(
     () => cities.find((c) => c.nameAr === city)?.areas || [],
     [cities, city],
@@ -163,19 +211,51 @@ export function NewFacebookOrderPage() {
   const variants = useMemo(
     () =>
       products.flatMap((p) =>
-        p.variants.map((v) => ({
-          ...v,
-          productName: p.nameAr,
-          price: Number(v.retailPrice ?? v.price),
-          label: `${p.nameAr} — ${v.nameAr || [v.color, v.size].filter(Boolean).join('/') || v.sku}`,
-        })),
+        p.variants.map((v) => {
+          const price = Number(v.retailPrice ?? v.price);
+          const available = v.available ?? v.availableQty;
+          return {
+            ...v,
+            productName: p.nameAr,
+            price,
+            available,
+            imageUrl: resolveVariantThumb(p, v),
+            label: `${p.nameAr} — ${v.nameAr || [v.color, v.size].filter(Boolean).join('/') || v.sku}`,
+          };
+        }),
       ),
     [products],
   );
 
+  const filteredVariants = useMemo(() => {
+    const q = pickerQuery.trim().toLowerCase();
+    if (!q) return variants;
+    return variants.filter(
+      (v) =>
+        v.label.toLowerCase().includes(q) ||
+        v.sku.toLowerCase().includes(q) ||
+        (v.color || '').toLowerCase().includes(q) ||
+        (v.size || '').toLowerCase().includes(q),
+    );
+  }, [variants, pickerQuery]);
+
+  const selected = variants.find((x) => x.id === selectedVariant);
+
+  function selectVariant(id: string) {
+    const v = variants.find((x) => x.id === id);
+    setSelectedVariant(id);
+    setUnitPriceInput(v ? Number(v.price) : '');
+    setPickerOpen(false);
+    setPickerQuery('');
+  }
+
   function addLine() {
     const v = variants.find((x) => x.id === selectedVariant);
     if (!v) return;
+    const price =
+      unitPriceInput === '' || !Number.isFinite(Number(unitPriceInput))
+        ? Number(v.price)
+        : Math.max(0, Number(unitPriceInput));
     setLines((prev) => [
       ...prev,
       {
@@ -184,11 +264,26 @@ export function NewFacebookOrderPage() {
         variantName: v.nameAr || [v.color, v.size].filter(Boolean).join(' / ') || v.sku,
         sku: v.sku,
         quantity: qty,
-        unitPrice: Number(v.price),
+        unitPrice: price,
+        listPrice: Number(v.price),
+        imageUrl: v.imageUrl,
       },
     ]);
     setSelectedVariant('');
+    setUnitPriceInput('');
     setQty(1);
+  }
+
+  function updateLinePrice(index: number, value: number) {
+    setLines((prev) =>
+      prev.map((l, i) =>
+        i === index ? { ...l, unitPrice: Math.max(0, Number.isFinite(value) ? value : 0) } : l,
+      ),
+    );
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
   }
 
   const subtotal = lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
@@ -369,26 +464,103 @@ export function NewFacebookOrderPage() {
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </label>
 
-        <div className="toolbar">
-          <div className="form-grid two" style={{ flex: 1 }}>
-            <label>
+        <div className="fb-order-add stack">
+          <div className="form-grid two">
+            <label className="fb-variant-picker-label">
               المنتج / المقاس / اللون
-              <select value={selectedVariant} onChange={(e) => setSelectedVariant(e.target.value)}>
-                <option value="">اختر صنف</option>
-                {variants.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label} — {Number(v.price)} د.ل
-                    {v.availableQty != null ? ` (متوفر ${v.availableQty})` : ''}
-                  </option>
-                ))}
-              </select>
+              <div className="fb-variant-picker" ref={pickerRef}>
+                <button
+                  type="button"
+                  className="fb-variant-trigger"
+                  onClick={() => setPickerOpen((o) => !o)}
+                  aria-expanded={pickerOpen}
+                >
+                  {selected ? (
+                    <>
+                      {selected.imageUrl ? (
+                        <img src={selected.imageUrl} alt="" className="fb-variant-thumb" />
+                      ) : (
+                        <span className="fb-variant-thumb fb-variant-thumb-empty">—</span>
+                      )}
+                      <span className="fb-variant-trigger-text">
+                        {selected.label} — {Number(selected.price)} د.ل
+                      </span>
+                    </>
+                  ) : (
+                    <span className="fb-variant-trigger-placeholder">اختر صنف</span>
+                  )}
+                </button>
+                {pickerOpen ? (
+                  <div className="fb-variant-menu" role="listbox">
+                    <input
+                      className="fb-variant-search"
+                      value={pickerQuery}
+                      onChange={(e) => setPickerQuery(e.target.value)}
+                      placeholder="بحث عن منتج..."
+                      autoFocus
+                    />
+                    <div className="fb-variant-list">
+                      {filteredVariants.length === 0 ? (
+                        <div className="fb-variant-empty">لا توجد نتائج</div>
+                      ) : (
+                        filteredVariants.map((v) => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            role="option"
+                            aria-selected={v.id === selectedVariant}
+                            className={`fb-variant-option${v.id === selectedVariant ? ' is-selected' : ''}`}
+                            onClick={() => selectVariant(v.id)}
+                          >
+                            {v.imageUrl ? (
+                              <img src={v.imageUrl} alt="" className="fb-variant-thumb" />
+                            ) : (
+                              <span className="fb-variant-thumb fb-variant-thumb-empty">—</span>
+                            )}
+                            <span className="fb-variant-option-meta">
+                              <span className="fb-variant-option-name">{v.label}</span>
+                              <span className="fb-variant-option-price">
+                                {Number(v.price)} د.ل
+                                {v.available != null ? ` · متوفر ${v.available}` : ''}
+                              </span>
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </label>
             <label>
               الكمية
-              <input type="number" min={1} value={qty} onChange={(e) => setQty(Number(e.target.value))} />
+              <input
+                type="number"
+                min={1}
+                value={qty}
+                onChange={(e) => setQty(Number(e.target.value))}
+              />
+            </label>
+            <label>
+              سعر الوحدة (د.ل)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={unitPriceInput}
+                onChange={(e) =>
+                  setUnitPriceInput(e.target.value === '' ? '' : Number(e.target.value))
+                }
+                placeholder={selected ? String(selected.price) : 'اختر منتجاً أولاً'}
+                disabled={!selectedVariant}
+              />
+              <span className="fb-price-hint">
+                يمكن تعديله أو زيادته لمساعدة الزبونة · السعر الافتراضي:{' '}
+                {selected ? `${Number(selected.price)} د.ل` : '—'}
+              </span>
             </label>
           </div>
-          <button className="btn secondary" type="button" onClick={addLine}>
+          <button className="btn secondary" type="button" onClick={addLine} disabled={!selectedVariant}>
             إضافة
           </button>
         </div>
@@ -401,18 +573,50 @@ export function NewFacebookOrderPage() {
                 <th>الكمية</th>
                 <th>السعر</th>
                 <th>الإجمالي</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {lines.map((l, i) => (
                 <tr key={`${l.variantId}-${i}`}>
                   <td>
-                    {l.productName}
-                    {l.variantName ? ` — ${l.variantName}` : ''}
+                    <div className="fb-line-product">
+                      {l.imageUrl ? (
+                        <img src={l.imageUrl} alt="" className="fb-variant-thumb" />
+                      ) : (
+                        <span className="fb-variant-thumb fb-variant-thumb-empty">—</span>
+                      )}
+                      <span>
+                        {l.productName}
+                        {l.variantName ? ` — ${l.variantName}` : ''}
+                      </span>
+                    </div>
                   </td>
                   <td>{l.quantity}</td>
-                  <td>{l.unitPrice}</td>
+                  <td>
+                    <input
+                      className="fb-line-price"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={l.unitPrice}
+                      onChange={(e) => updateLinePrice(i, Number(e.target.value))}
+                      aria-label="سعر الوحدة"
+                    />
+                    {l.unitPrice !== l.listPrice ? (
+                      <div className="fb-price-hint">أصل {l.listPrice}</div>
+                    ) : null}
+                  </td>
                   <td>{l.quantity * l.unitPrice}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn secondary fb-line-remove"
+                      onClick={() => removeLine(i)}
+                    >
+                      حذف
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

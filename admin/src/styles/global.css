@@ -1185,6 +1185,35 @@ input:focus, select:focus, textarea:focus {
 }
 .driver-tiles b { font-size: 18px; }
 
+.driver-pay {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1.5px solid #c4b49a;
+  background: #faf7f1;
+}
+.driver-pay.is-cod {
+  border-color: #c9a227;
+  background: #fff8e8;
+}
+.driver-pay.is-paid {
+  border-color: #8fbf9a;
+  background: #f1faf3;
+}
+.driver-pay-amount {
+  display: grid;
+  gap: 2px;
+}
+.driver-pay-value {
+  font-size: 1.35rem;
+  letter-spacing: 0.01em;
+  color: #1c1408;
+}
+.driver-pay.is-cod .driver-pay-value {
+  color: #6f5618;
+}
+
 .error { color: var(--danger); margin: 8px 0; font-size: 14px; }
 .success { color: var(--success, #1b7f4e); margin: 8px 0; font-size: 14px; }
 .empty { padding: 28px; text-align: center; color: var(--on-surface-variant); }
@@ -1418,4 +1447,132 @@ input:focus, select:focus, textarea:focus {
   .pf-summary-actions .btn { flex: 1; }
   .pf-image-grid { grid-template-columns: repeat(2, 1fr); }
   .pf-products-table { font-size: 13px; }
+}
+
+/* Facebook order — product picker with thumbs + editable price */
+.fb-order-add {
+  gap: 12px;
+}
+.fb-variant-picker-label {
+  grid-column: 1 / -1;
+}
+.fb-variant-picker {
+  position: relative;
+}
+.fb-variant-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--outline-variant, var(--border));
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.fb-variant-trigger-placeholder {
+  color: var(--on-surface-variant);
+}
+.fb-variant-trigger-text {
+  flex: 1;
+  line-height: 1.35;
+}
+.fb-variant-thumb {
+  width: 40px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--outline-variant, var(--border));
+  background: var(--surface-container, #f8fafc);
+  flex-shrink: 0;
+  display: block;
+}
+.fb-variant-thumb-empty {
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+}
+.fb-variant-menu {
+  position: absolute;
+  z-index: 40;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  max-height: min(360px, 55vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #fff);
+  border: 1px solid var(--outline-variant, var(--border));
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+.fb-variant-search {
+  margin: 8px;
+  width: calc(100% - 16px);
+}
+.fb-variant-list {
+  overflow: auto;
+  padding: 0 4px 8px;
+}
+.fb-variant-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.fb-variant-option:hover,
+.fb-variant-option.is-selected {
+  background: var(--surface-container, #f3f0ea);
+}
+.fb-variant-option-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fb-variant-option-name {
+  line-height: 1.35;
+}
+.fb-variant-option-price {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+}
+.fb-variant-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}
+.fb-price-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--on-surface-variant);
+}
+.fb-line-product {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fb-line-price {
+  width: 88px;
+  min-width: 72px;
+}
+.fb-line-remove {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
 }
