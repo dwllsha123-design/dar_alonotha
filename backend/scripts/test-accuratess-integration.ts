@@ -114,8 +114,12 @@ async function buildAdminUser(prisma: PrismaService): Promise<AuthUser> {
 async function pickExternalTestCity(
   accuratess: AccuratessService,
 ): Promise<{ city: string; area: string }> {
-  const candidates = ['مصراتة', 'الزاوية', 'سبها', 'البيضاء', 'درنة', 'صبراتة', 'بنغازي'];
-  for (const city of candidates) {
+  const fromCarrier = await accuratess.listDestinationCitiesForCheckout();
+  const candidates =
+    fromCarrier.length > 0
+      ? fromCarrier.map((c) => c.nameAr)
+      : ['مصراتة', 'الزاوية', 'سبها', 'البيضاء', 'درنة', 'صبراتة', 'بنغازي'];
+  for (const city of candidates.slice(0, 12)) {
     const probe = await accuratess.saveShipment({
       orderNumber: `PROBE-${Date.now()}`,
       senderName: 'دار الأنوثة',
@@ -261,6 +265,27 @@ async function main() {
       process.exitCode = 1;
       return;
     }
+
+    const checkoutCities = await accuratess.listDestinationCitiesForCheckout();
+    checks.push(
+      assert(
+        checkoutCities.length > 0,
+        'Accuratess checkout cities list',
+        checkoutCities.length
+          ? `${checkoutCities.length} cities (e.g. ${checkoutCities
+              .slice(0, 5)
+              .map((c) => c.nameAr)
+              .join(', ')})`
+          : 'empty — zones dropdown returned nothing',
+      ),
+    );
+    checks.push(
+      assert(
+        !checkoutCities.some((c) => /طرابلس|tripoli/i.test(c.nameAr)),
+        'checkout cities exclude Tripoli',
+        'Tripoli stays on local OWN_AGENTS list',
+      ),
+    );
 
     const destination = await pickExternalTestCity(accuratess);
     console.log(`Using destination city: ${destination.city}\n`);

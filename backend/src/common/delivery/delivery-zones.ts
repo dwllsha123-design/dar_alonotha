@@ -1,4 +1,8 @@
-/** مناطق ومدن التوصيل — بدون اختراع شركة خارجية */
+/** مناطق ومدن التوصيل
+ * طرابلس: مندوبون محليون (OWN_AGENTS)
+ * المدن الخارجية: تُجلب من Accuratess عبر StoreService.deliveryOptions()
+ * EXTERNAL_CITIES هنا fallback فقط إذا فشل/غير مفعّل Accuratess
+ */
 
 export type DeliveryZoneMode = 'OWN_AGENTS' | 'EXTERNAL_COMPANY_PENDING';
 

@@ -16,13 +16,14 @@ import {
   UpdateStoreProfileDto,
 } from './dto/store.dto';
 import {
-  DELIVERY_CITIES,
+  EXTERNAL_CITIES,
   TRIPOLI_AREAS,
   deliveryGenderLabelAr,
   findDeliveryCity,
   parseDeliveryGender,
 } from '../../common/delivery/delivery-zones';
 import { resolveVariantImageUrl } from '../../common/variant-image';
+import { AccuratessService } from '../delivery/accuratess.service';
 import { OrderFulfillmentService } from '../delivery/order-fulfillment.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthService } from '../auth/auth.service';
@@ -76,6 +77,7 @@ export class StoreService {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
     private readonly fulfillment: OrderFulfillmentService,
+    private readonly accuratess: AccuratessService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -144,18 +146,54 @@ export class StoreService {
           femaleEnabled: true,
         }));
 
+    const tripoliCity = {
+      nameAr: 'طرابلس',
+      mode: 'OWN_AGENTS' as const,
+      deliveryType: 'INTERNAL' as const,
+      requiresGender: true,
+      areas: tripoliNames,
+      areaDetails: tripoliDetails,
+    };
+
+    // EXTERNAL cities: Accuratess zones (live). Fallback to curated list if offline.
+    const fromCarrier = await this.accuratess.listDestinationCitiesForCheckout();
+    const externalSource =
+      fromCarrier.length > 0
+        ? fromCarrier
+        : EXTERNAL_CITIES.map((c) => ({
+            nameAr: c.nameAr,
+            areas: c.areas.map((a) => a.nameAr),
+          }));
+
+    const externalCities = externalSource
+      .filter((c) => c.nameAr && c.nameAr !== 'طرابلس')
+      .map((c) => ({
+        nameAr: c.nameAr,
+        mode: 'EXTERNAL_COMPANY_PENDING' as const,
+        deliveryType: 'EXTERNAL' as const,
+        requiresGender: false,
+        areas: c.areas?.length ? c.areas : ['المركز', 'أخرى'],
+        areaDetails: undefined as undefined,
+      }));
+
+    // Keep a last-resort freeform option when using Accuratess list
+    if (
+      fromCarrier.length > 0 &&
+      !externalCities.some((c) => c.nameAr === 'مدينة أخرى')
+    ) {
+      externalCities.push({
+        nameAr: 'مدينة أخرى',
+        mode: 'EXTERNAL_COMPANY_PENDING',
+        deliveryType: 'EXTERNAL',
+        requiresGender: false,
+        areas: ['أخرى'],
+        areaDetails: undefined,
+      });
+    }
+
     return {
-      cities: DELIVERY_CITIES.map((c) => {
-        const isInternal = c.mode === 'OWN_AGENTS';
-        return {
-          nameAr: c.nameAr,
-          mode: c.mode,
-          deliveryType: isInternal ? 'INTERNAL' : 'EXTERNAL',
-          requiresGender: isInternal,
-          areas: isInternal ? tripoliNames : c.areas.map((a) => a.nameAr),
-          areaDetails: isInternal ? tripoliDetails : undefined,
-        };
-      }),
+      cities: [tripoliCity, ...externalCities],
+      source: fromCarrier.length > 0 ? 'accuratess' : 'fallback',
       notes: {
         internal: 'سيتم التواصل معكِ لتأكيد موعد التوصيل.',
         external: 'سيتم التواصل معكِ لتأكيد موعد التوصيل.',
