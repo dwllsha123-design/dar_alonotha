@@ -108,6 +108,25 @@ export function OrdersPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [shipOpts, setShipOpts] = useState<{
+    services: Array<{ id: number; name: string }>;
+    parcelTypes: Array<{ code: string; labelAr: string }>;
+    paymentTypes: Array<{ code: string; labelAr: string }>;
+    priceTypes: Array<{ code: string; labelAr: string }>;
+    openableOptions: Array<{ code: string; labelAr: string }>;
+    defaults: {
+      serviceId: number | null;
+      typeCode: string;
+      paymentTypeCode: string;
+      priceTypeCode: string;
+      openableCode: string;
+    };
+  } | null>(null);
+  const [serviceId, setServiceId] = useState<number | ''>('');
+  const [typeCode, setTypeCode] = useState('FDP');
+  const [paymentTypeCode, setPaymentTypeCode] = useState('COLC');
+  const [priceTypeCode, setPriceTypeCode] = useState('INCLD');
+  const [openableCode, setOpenableCode] = useState('N');
 
   useEffect(() => {
     if (!pageEmployee) return;
@@ -140,6 +159,16 @@ export function OrdersPage() {
         .then(setCouriers)
         .catch(() => undefined);
     }
+    api<NonNullable<typeof shipOpts>>('/delivery/accuratess/shipment-options')
+      .then((opts) => {
+        setShipOpts(opts);
+        setServiceId(opts.defaults.serviceId ?? opts.services[0]?.id ?? '');
+        setTypeCode(opts.defaults.typeCode || 'FDP');
+        setPaymentTypeCode(opts.defaults.paymentTypeCode || 'COLC');
+        setPriceTypeCode(opts.defaults.priceTypeCode || 'INCLD');
+        setOpenableCode(opts.defaults.openableCode || 'N');
+      })
+      .catch(() => undefined);
   }, [pageEmployee, user?.facebookPages]);
 
   useEffect(() => {
@@ -169,7 +198,17 @@ export function OrdersPage() {
     setBusyId(o.id);
     try {
       if (isExternalOrder(o)) {
-        await api(`/orders/${o.id}/fulfill`, { method: 'POST', body: '{}' });
+        await api(`/orders/${o.id}/fulfill`, {
+          method: 'POST',
+          body: JSON.stringify({
+            createShipment: true,
+            serviceId: serviceId === '' ? undefined : Number(serviceId),
+            typeCode,
+            paymentTypeCode,
+            priceTypeCode,
+            openableCode,
+          }),
+        });
         setMsg(`تم إرسال الطلب ${o.orderNumber} لشركة التوصيل`);
       } else {
         if (!selectedCourierId) {
@@ -490,9 +529,92 @@ export function OrdersPage() {
                                   ))}
                                 </select>
                               ) : (
-                                <span className="muted" style={{ fontSize: 12 }}>
-                                  خارج طرابلس → Accuratess
-                                </span>
+                                <div style={{ display: 'grid', gap: 6, minWidth: 180 }}>
+                                  <span className="muted" style={{ fontSize: 12 }}>
+                                    خارج طرابلس → Accuratess
+                                  </span>
+                                  <select
+                                    value={serviceId === '' ? '' : String(serviceId)}
+                                    onChange={(e) =>
+                                      setServiceId(e.target.value ? Number(e.target.value) : '')
+                                    }
+                                    style={{ height: 32, padding: '0 8px' }}
+                                    disabled={busyId === o.id}
+                                  >
+                                    <option value="">الخدمة (افتراضي)</option>
+                                    {(shipOpts?.services || []).map((s) => (
+                                      <option key={s.id} value={s.id}>
+                                        {s.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={typeCode}
+                                    onChange={(e) => setTypeCode(e.target.value)}
+                                    style={{ height: 32, padding: '0 8px' }}
+                                    disabled={busyId === o.id}
+                                  >
+                                    {(
+                                      shipOpts?.parcelTypes || [
+                                        { code: 'FDP', labelAr: 'تسليم كامل الطرد' },
+                                      ]
+                                    ).map((x) => (
+                                      <option key={x.code} value={x.code}>
+                                        {x.labelAr}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={paymentTypeCode}
+                                    onChange={(e) => setPaymentTypeCode(e.target.value)}
+                                    style={{ height: 32, padding: '0 8px' }}
+                                    disabled={busyId === o.id}
+                                  >
+                                    {(
+                                      shipOpts?.paymentTypes || [
+                                        { code: 'COLC', labelAr: 'واجبة التحصيل' },
+                                      ]
+                                    ).map((x) => (
+                                      <option key={x.code} value={x.code}>
+                                        {x.labelAr}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={priceTypeCode}
+                                    onChange={(e) => setPriceTypeCode(e.target.value)}
+                                    style={{ height: 32, padding: '0 8px' }}
+                                    disabled={busyId === o.id}
+                                  >
+                                    {(
+                                      shipOpts?.priceTypes || [
+                                        { code: 'INCLD', labelAr: 'شامل مصاريف الشحن' },
+                                        { code: 'EXCLD', labelAr: 'غير شامل مصاريف الشحن' },
+                                      ]
+                                    ).map((x) => (
+                                      <option key={x.code} value={x.code}>
+                                        {x.labelAr}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={openableCode}
+                                    onChange={(e) => setOpenableCode(e.target.value)}
+                                    style={{ height: 32, padding: '0 8px' }}
+                                    disabled={busyId === o.id}
+                                  >
+                                    {(
+                                      shipOpts?.openableOptions || [
+                                        { code: 'N', labelAr: 'غير مسموح بفتح الطرد' },
+                                        { code: 'Y', labelAr: 'مسموح بفتح الطرد' },
+                                      ]
+                                    ).map((x) => (
+                                      <option key={x.code} value={x.code}>
+                                        {x.labelAr}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
                               )}
                               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 <button

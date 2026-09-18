@@ -21,6 +21,7 @@ import { assertCanAccessOrder } from '../../common/order-access';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CouriersService } from './couriers.service';
 import { OrderFulfillmentService } from './order-fulfillment.service';
+import { FulfillOrderDto } from './dto/delivery.dto';
 
 class CourierBodyDto {
   @IsString()
@@ -95,9 +96,26 @@ export class CouriersController {
 
   @Post('orders/:id/fulfill')
   @RequirePermissions(PERMISSIONS.DELIVERY_ASSIGN)
-  async fulfill(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+  async fulfill(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: FulfillOrderDto = {},
+  ) {
     await assertCanAccessOrder(this.prisma, user, id);
-    return this.fulfillment.routeOrder(id);
+    return this.fulfillment.routeOrder(id, {
+      createShipment: dto.createShipment === true,
+      serviceId: dto.serviceId,
+      typeCode: dto.typeCode,
+      priceTypeCode: dto.priceTypeCode,
+      paymentTypeCode: dto.paymentTypeCode as
+        | 'COLC'
+        | 'PAID'
+        | 'CASH'
+        | 'CRDT'
+        | 'VISA'
+        | undefined,
+      openableCode: dto.openableCode,
+    });
   }
 
   @Post('orders/:id/assign-courier')

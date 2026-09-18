@@ -58,6 +58,21 @@ type Page = { id: string; name: string; publicCode: number };
 type Agent = { id: string; name: string; phone?: string };
 type Courier = { id: string; name: string; phone?: string | null; isActive: boolean };
 
+type ShipmentOptionsCatalog = {
+  services: Array<{ id: number; name: string }>;
+  parcelTypes: Array<{ code: string; labelAr: string }>;
+  paymentTypes: Array<{ code: string; labelAr: string }>;
+  priceTypes: Array<{ code: string; labelAr: string }>;
+  openableOptions: Array<{ code: string; labelAr: string }>;
+  defaults: {
+    serviceId: number | null;
+    typeCode: string;
+    paymentTypeCode: string;
+    priceTypeCode: string;
+    openableCode: string;
+  };
+};
+
 export function DeliveryPage() {
   const [rows, setRows] = useState<Delivery[]>([]);
   const [pending, setPending] = useState<PendingOrder[]>([]);
@@ -74,26 +89,56 @@ export function DeliveryPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [shipOpts, setShipOpts] = useState<ShipmentOptionsCatalog | null>(null);
+  const [serviceId, setServiceId] = useState<number | ''>('');
+  const [typeCode, setTypeCode] = useState('FDP');
+  const [paymentTypeCode, setPaymentTypeCode] = useState('COLC');
+  const [priceTypeCode, setPriceTypeCode] = useState('INCLD');
+  const [openableCode, setOpenableCode] = useState('N');
 
   const selected = useMemo(
     () => pending.find((o) => o.id === orderId) || null,
     [pending, orderId],
   );
 
+  const isInternalSelected =
+    selected?.deliveryType === 'INTERNAL' || selected?.fulfillmentType === 'INTERNAL';
+
+  function shipmentPayload() {
+    return {
+      serviceId: serviceId === '' ? undefined : Number(serviceId),
+      typeCode,
+      paymentTypeCode,
+      priceTypeCode,
+      openableCode,
+    };
+  }
+
   async function load() {
     const qs = pageId ? `?facebookPageId=${encodeURIComponent(pageId)}` : '';
-    const [d, p, a, pg, c] = await Promise.all([
+    const [d, p, a, pg, c, opts] = await Promise.all([
       api<Delivery[]>(`/delivery${qs}`),
       api<PendingOrder[]>('/delivery/pending-orders'),
       api<Agent[]>('/delivery/agents').catch(() => [] as Agent[]),
       api<Page[]>('/facebook-pages').catch(() => [] as Page[]),
       api<Courier[]>('/couriers').catch(() => [] as Courier[]),
+      api<ShipmentOptionsCatalog>('/delivery/accuratess/shipment-options').catch(
+        () => null,
+      ),
     ]);
     setRows(d);
     setPending(p);
     setAgents(a);
     setPages(pg);
     setCouriers(c);
+    if (opts) {
+      setShipOpts(opts);
+      setServiceId(opts.defaults.serviceId ?? opts.services[0]?.id ?? '');
+      setTypeCode(opts.defaults.typeCode || 'FDP');
+      setPaymentTypeCode(opts.defaults.paymentTypeCode || 'COLC');
+      setPriceTypeCode(opts.defaults.priceTypeCode || 'INCLD');
+      setOpenableCode(opts.defaults.openableCode || 'N');
+    }
     if (!orderId && p[0]) setOrderId(p[0].id);
   }
 
@@ -147,6 +192,7 @@ export function DeliveryPage() {
             type: selected.deliveryType,
             agentId: isInternal ? agentId || undefined : undefined,
             fee: fee ?? Number(selected.deliveryFee || 0),
+            ...(!isInternal ? shipmentPayload() : {}),
           }),
         });
         setMsg(isInternal ? 'تم تعيين المندوب بنجاح' : 'تم إرسال الطلب لـ Accuratess');
@@ -241,14 +287,23 @@ export function DeliveryPage() {
     setError('');
     setMsg('');
     try {
+      const wantsExternal = !isInternalSelected;
       const res = await api<{
         fulfillmentType: string;
         error?: string | null;
+        deferred?: boolean;
         externalTrackingNumber?: string | null;
         accuratessCode?: string | null;
         order?: { externalTrackingNumber?: string | null };
         fulfillmentError?: string | null;
-      }>(`/orders/${orderId}/fulfill`, { method: 'POST', body: '{}' });
+      }>(`/orders/${orderId}/fulfill`, {
+        method: 'POST',
+        body: JSON.stringify(
+          wantsExternal
+            ? { createShipment: true, ...shipmentPayload() }
+            : {},
+        ),
+      });
       const code = (
         res.externalTrackingNumber ||
         res.accuratessCode ||
@@ -257,6 +312,8 @@ export function DeliveryPage() {
       ).trim();
       if (res.fulfillmentType === 'INTERNAL') {
         setMsg('تم توجيه الطلب للتوصيل الداخلي');
+      } else if (res.deferred) {
+        setMsg('تم تعليم الطلب كشحن خارجي — اختاري خيارات الشحنة ثم أرسلي');
       } else if (res.error || res.fulfillmentError) {
         setMsg(
           `شحن خارجي مع تنبيه: ${res.error || res.fulfillmentError}${
@@ -384,10 +441,93 @@ export function DeliveryPage() {
             ) : null}
           </>
         ) : (
-          <label>
-            شركة التوصيل
-            <input value="المعيار — الحساب العام للموقع تلقائياً" disabled />
-          </label>
+          <>
+            <label>
+              شركة التوصيل
+              <input value="المعيار — الحساب العام للموقع تلقائياً" disabled />
+            </label>
+            <label>
+              الخدمة
+              <select
+                value={serviceId === '' ? '' : String(serviceId)}
+                onChange={(e) =>
+                  setServiceId(e.target.value ? Number(e.target.value) : '')
+                }
+              >
+                <option value="">افتراضي Accuratess</option>
+                {(shipOpts?.services || []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              نوع الطرد
+              <select value={typeCode} onChange={(e) => setTypeCode(e.target.value)}>
+                {(shipOpts?.parcelTypes || [{ code: 'FDP', labelAr: 'تسليم كامل الطرد' }]).map(
+                  (o) => (
+                    <option key={o.code} value={o.code}>
+                      {o.labelAr}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label>
+              نوع الدفع
+              <select
+                value={paymentTypeCode}
+                onChange={(e) => setPaymentTypeCode(e.target.value)}
+              >
+                {(
+                  shipOpts?.paymentTypes || [
+                    { code: 'COLC', labelAr: 'واجبة التحصيل' },
+                  ]
+                ).map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.labelAr}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              نوع السعر
+              <select
+                value={priceTypeCode}
+                onChange={(e) => setPriceTypeCode(e.target.value)}
+              >
+                {(
+                  shipOpts?.priceTypes || [
+                    { code: 'INCLD', labelAr: 'شامل مصاريف الشحن' },
+                    { code: 'EXCLD', labelAr: 'غير شامل مصاريف الشحن' },
+                  ]
+                ).map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.labelAr}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              فتح الطرد
+              <select
+                value={openableCode}
+                onChange={(e) => setOpenableCode(e.target.value)}
+              >
+                {(
+                  shipOpts?.openableOptions || [
+                    { code: 'N', labelAr: 'غير مسموح بفتح الطرد' },
+                    { code: 'Y', labelAr: 'مسموح بفتح الطرد' },
+                  ]
+                ).map((o) => (
+                  <option key={o.code} value={o.code}>
+                    {o.labelAr}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
         )}
         <label>
           رسوم التوصيل

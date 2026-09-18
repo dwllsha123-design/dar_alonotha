@@ -33,11 +33,27 @@ export type AccuratessShipmentPayload = {
   weight?: number;
   /** COD → COLC (افتراضي)، أو PAID/CASH… */
   paymentTypeCode?: 'COLC' | 'PAID' | 'CASH' | 'CRDT' | 'VISA';
+  /** Accuratess service id (الخدمة) */
+  serviceId?: number;
+  /** نوع الطرد e.g. FDP */
+  typeCode?: string;
+  /** نوع السعر e.g. INCLD / EXCLD */
+  priceTypeCode?: string;
+  /** فتح الطرد Y/N */
+  openableCode?: string;
   sourcePage: string;
   sourcePageCode?: number | null;
   description?: string;
   /** حساب الصفحة الفرعية — إن وُجد يتجاوز التوكن العام */
   account?: AccuratessAccountCreds | null;
+};
+
+export type AccuratessShipmentEmployeeOptions = {
+  serviceId?: number;
+  typeCode?: string;
+  priceTypeCode?: string;
+  paymentTypeCode?: 'COLC' | 'PAID' | 'CASH' | 'CRDT' | 'VISA';
+  openableCode?: string;
 };
 
 type AccuratessZone = { id: number; name: string };
@@ -753,6 +769,68 @@ export class AccuratessService {
     return first || 1;
   }
 
+  /**
+   * Catalog for employee shipment-create UI.
+   * Services come from Accuratess; other codes are known Accuratess enums (Arabic labels).
+   * Never returns secrets.
+   */
+  async listShipmentOptionCatalog(account?: AccuratessAccountCreds | null) {
+    let services: Array<{ id: number; name: string }> = [];
+    if (this.isConfigured(account)) {
+      try {
+        const json = await this.request<{
+          listShippingServicesDropdown?: Array<{ id: number; name: string }>;
+        }>(
+          `query AccuratessShippingServices {
+            listShippingServicesDropdown { id name }
+          }`,
+          undefined,
+          account,
+        );
+        services = (json.data?.listShippingServicesDropdown || []).filter(
+          (s) => s?.id && s?.name,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Accuratess services catalog failed: ${message}`);
+      }
+    }
+
+    const defaultServiceId =
+      Number(this.config.get<string>('ACCURATESS_SERVICE_ID') || '') ||
+      services[0]?.id ||
+      null;
+
+    return {
+      services,
+      parcelTypes: [
+        { code: 'FDP', labelAr: 'تسليم كامل الطرد' },
+      ],
+      paymentTypes: [
+        { code: 'COLC', labelAr: 'واجبة التحصيل' },
+        { code: 'PAID', labelAr: 'مدفوع مسبقاً' },
+        { code: 'CASH', labelAr: 'نقداً' },
+        { code: 'CRDT', labelAr: 'آجل / ائتمان' },
+        { code: 'VISA', labelAr: 'بطاقة' },
+      ],
+      priceTypes: [
+        { code: 'INCLD', labelAr: 'شامل مصاريف الشحن' },
+        { code: 'EXCLD', labelAr: 'غير شامل مصاريف الشحن' },
+      ],
+      openableOptions: [
+        { code: 'N', labelAr: 'غير مسموح بفتح الطرد' },
+        { code: 'Y', labelAr: 'مسموح بفتح الطرد' },
+      ],
+      defaults: {
+        serviceId: defaultServiceId,
+        typeCode: this.config.get<string>('ACCURATESS_TYPE_CODE') || 'FDP',
+        paymentTypeCode: 'COLC',
+        priceTypeCode: this.config.get<string>('ACCURATESS_PRICE_TYPE_CODE') || 'INCLD',
+        openableCode: this.config.get<string>('ACCURATESS_OPENABLE_CODE') || 'N',
+      },
+    };
+  }
+
   /** Lookup an existing shipment by refNumber (idempotency / recovery). */
   async findShipmentByRef(
     refNumber: string,
@@ -946,7 +1024,10 @@ export class AccuratessService {
         }
       }
 
-      const serviceId = await this.resolveServiceId(payload.account);
+      const serviceId =
+        payload.serviceId && Number.isFinite(Number(payload.serviceId)) && Number(payload.serviceId) > 0
+          ? Number(payload.serviceId)
+          : await this.resolveServiceId(payload.account);
       const sender = await this.resolveSenderZones(payload.account);
       const recipient = await this.resolveRecipientZones(
         payload.city,
@@ -961,6 +1042,18 @@ export class AccuratessService {
       }
 
       const paymentTypeCode = payload.paymentTypeCode || 'COLC';
+      const typeCode =
+        (payload.typeCode || '').trim() ||
+        this.config.get<string>('ACCURATESS_TYPE_CODE') ||
+        'FDP';
+      const priceTypeCode =
+        (payload.priceTypeCode || '').trim() ||
+        this.config.get<string>('ACCURATESS_PRICE_TYPE_CODE') ||
+        'INCLD';
+      const openableCode =
+        (payload.openableCode || '').trim() ||
+        this.config.get<string>('ACCURATESS_OPENABLE_CODE') ||
+        'N';
       const collectAmount = Number(payload.price || 0);
       // Accuratess: CASH/PAID يتطلب price=0؛ COLC يستخدم مبلغ التحصيل
       const price =
@@ -987,11 +1080,10 @@ export class AccuratessService {
           payload.piecesCount != null && payload.piecesCount > 0
             ? Math.floor(payload.piecesCount)
             : 1,
-        typeCode: this.config.get<string>('ACCURATESS_TYPE_CODE') || 'FDP',
-        priceTypeCode:
-          this.config.get<string>('ACCURATESS_PRICE_TYPE_CODE') || 'EXCLD',
+        typeCode,
+        priceTypeCode,
         paymentTypeCode,
-        openableCode: this.config.get<string>('ACCURATESS_OPENABLE_CODE') || 'Y',
+        openableCode,
         notes: [
           payload.notes,
           `الراسل=${sourceLabel}`,

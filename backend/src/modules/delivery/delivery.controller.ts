@@ -6,6 +6,7 @@ import {
   AssignDeliveryDto,
   BulkSlipsDto,
   CreateDeliveryCompanyDto,
+  FulfillOrderDto,
   UpdateDeliveryStatusDto,
   UpdateDeliveryZoneDto,
   UpsertDeliveryZoneDto,
@@ -142,6 +143,12 @@ export class DeliveryController {
           : 'unknown',
       ...ping,
     };
+  }
+
+  @Get('accuratess/shipment-options')
+  @RequirePermissions(PERMISSIONS.DELIVERY_ASSIGN)
+  shipmentOptions() {
+    return this.accuratess.listShipmentOptionCatalog();
   }
 
   @Post('sync-accuratess')

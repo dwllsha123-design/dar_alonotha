@@ -67,9 +67,19 @@ export class OrderFulfillmentService {
   /**
    * توجيه ذكي عند إنشاء/اعتماد الطلب:
    * طرابلس → internal + local_status
-   * خارجها → external + Accuratess بالحساب العام (الموقع)
+   * خارجها → external؛ Accuratess فقط عند createShipment=true (إجراء الموظف)
    */
-  async routeOrder(orderId: string) {
+  async routeOrder(
+    orderId: string,
+    options?: {
+      createShipment?: boolean;
+      serviceId?: number;
+      typeCode?: string;
+      priceTypeCode?: string;
+      paymentTypeCode?: 'COLC' | 'PAID' | 'CASH' | 'CRDT' | 'VISA';
+      openableCode?: string;
+    },
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { facebookPage: true, items: true },
@@ -106,6 +116,37 @@ export class OrderFulfillmentService {
       };
     }
 
+    const pagePublicCode =
+      order.pagePublicCode ?? order.facebookPage?.publicCode ?? null;
+
+    // Mark EXTERNAL only — Accuratess wait for employee shipment options.
+    if (!options?.createShipment) {
+      const updated = await this.prisma.order.update({
+        where: { id: orderId },
+        data: {
+          fulfillmentType: 'EXTERNAL',
+          deliveryType: 'EXTERNAL',
+          localStatus: null,
+          pageSource,
+          pagePublicCode: pagePublicCode ?? undefined,
+          fulfillmentError: null,
+        },
+        include: { facebookPage: true, courier: true },
+      });
+      return {
+        fulfillmentType: 'EXTERNAL' as const,
+        order: updated,
+        externalTrackingNumber: updated.externalTrackingNumber,
+        accuratessCode: updated.externalTrackingNumber,
+        accuratessShipmentId: null,
+        pagePublicCode: updated.pagePublicCode,
+        accountUsed: null,
+        external: null,
+        deferred: true,
+        error: null,
+      };
+    }
+
     // EXTERNAL — always global Accuratess (page attribution does not pick credentials)
     const account = await this.resolvePageAccount({
       facebookPageId: order.facebookPageId,
@@ -139,9 +180,6 @@ export class OrderFulfillmentService {
     let payloadJson: string | null = null;
     let fulfillmentError: string | null = null;
 
-    const pagePublicCode =
-      order.pagePublicCode ?? order.facebookPage?.publicCode ?? null;
-
     if (order.externalTrackingNumber) {
       tracking = order.externalTrackingNumber;
       labelUrl = order.shippingLabelUrl;
@@ -165,7 +203,11 @@ export class OrderFulfillmentService {
           price: Number(order.totalAmount || 0),
           deliveryFees: Number(order.deliveryFee || 0),
           piecesCount: piecesCount > 0 ? piecesCount : 1,
-          paymentTypeCode: 'COLC',
+          paymentTypeCode: options.paymentTypeCode || 'COLC',
+          serviceId: options.serviceId,
+          typeCode: options.typeCode,
+          priceTypeCode: options.priceTypeCode,
+          openableCode: options.openableCode,
           sourcePage: senderName,
           sourcePageCode: pagePublicCode,
           account: account

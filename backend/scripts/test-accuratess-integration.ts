@@ -299,12 +299,55 @@ async function main() {
     orderId = order.id;
     console.log(`Created test order ${order.orderNumber} (${order.id})\n`);
 
-    // 1) routeOrder (store checkout path)
-    const routed = await fulfillment.routeOrder(order.id);
+    // 1) routeOrder without createShipment → EXTERNAL mark only (deferred Accuratess)
+    const deferred = await fulfillment.routeOrder(order.id);
+    checks.push(
+      assert(
+        deferred.fulfillmentType === 'EXTERNAL',
+        'routeOrder (no createShipment) → EXTERNAL',
+        `type=${deferred.fulfillmentType}`,
+      ),
+    );
+    checks.push(
+      assert(
+        Boolean((deferred as { deferred?: boolean }).deferred),
+        'routeOrder defers Accuratess until employee action',
+        'deferred=true',
+      ),
+    );
+    const afterDefer = await prisma.order.findUnique({ where: { id: order.id } });
+    checks.push(
+      assert(
+        !afterDefer?.externalTrackingNumber,
+        'deferred routeOrder has no Accuratess tracking yet',
+        afterDefer?.externalTrackingNumber
+          ? `unexpected code=${afterDefer.externalTrackingNumber}`
+          : 'no tracking (ok)',
+      ),
+    );
+
+    const catalog = await accuratess.listShipmentOptionCatalog();
+    checks.push(
+      assert(
+        Boolean(catalog.defaults?.typeCode && catalog.defaults?.paymentTypeCode),
+        'shipment-options catalog has defaults',
+        `type=${catalog.defaults?.typeCode} pay=${catalog.defaults?.paymentTypeCode}`,
+      ),
+    );
+
+    // 2) Employee createShipment with options
+    const routed = await fulfillment.routeOrder(order.id, {
+      createShipment: true,
+      typeCode: 'FDP',
+      paymentTypeCode: 'COLC',
+      priceTypeCode: 'INCLD',
+      openableCode: 'N',
+      serviceId: catalog.defaults.serviceId || undefined,
+    });
     checks.push(
       assert(
         routed.fulfillmentType === 'EXTERNAL',
-        'routeOrder → EXTERNAL',
+        'routeOrder createShipment → EXTERNAL',
         `type=${routed.fulfillmentType}`,
       ),
     );
@@ -314,14 +357,14 @@ async function main() {
     checks.push(
       assert(
         Boolean(firstCode),
-        'routeOrder saves externalTrackingNumber',
+        'routeOrder createShipment saves externalTrackingNumber',
         firstCode ? `code=${firstCode}` : `error=${afterRoute?.fulfillmentError || 'none'}`,
       ),
     );
     checks.push(
       assert(
         Boolean(afterRoute?.shippingLabelUrl),
-        'routeOrder saves trackingUrl',
+        'routeOrder createShipment saves trackingUrl',
         afterRoute?.shippingLabelUrl ? 'trackingUrl present' : 'trackingUrl missing',
       ),
     );
@@ -333,14 +376,14 @@ async function main() {
     checks.push(
       assert(
         deliveryAfterRoute?.trackingNumber === firstCode,
-        'routeOrder saves delivery.trackingNumber',
+        'routeOrder createShipment saves delivery.trackingNumber',
         deliveryAfterRoute?.trackingNumber
           ? `trackingNumber=${deliveryAfterRoute.trackingNumber}`
           : 'no delivery.trackingNumber',
       ),
     );
 
-    // 2) assign EXTERNAL (admin path) — idempotent
+    // 3) assign EXTERNAL (admin path) — idempotent
     const assign1 = await delivery.assign(admin, {
       orderId: order.id,
       type: 'EXTERNAL',

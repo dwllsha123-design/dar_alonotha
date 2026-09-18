@@ -445,7 +445,17 @@ export class DeliveryService {
           price: Number(order.totalAmount || 0),
           deliveryFees: Number(dto.fee ?? order.deliveryFee ?? 0),
           piecesCount: piecesCount > 0 ? piecesCount : 1,
-          paymentTypeCode: 'COLC',
+          paymentTypeCode: (dto.paymentTypeCode as
+            | 'COLC'
+            | 'PAID'
+            | 'CASH'
+            | 'CRDT'
+            | 'VISA'
+            | undefined) || 'COLC',
+          serviceId: dto.serviceId,
+          typeCode: dto.typeCode,
+          priceTypeCode: dto.priceTypeCode,
+          openableCode: dto.openableCode,
           sourcePage: senderName,
           sourcePageCode: order.pagePublicCode,
           account: accountCreds,

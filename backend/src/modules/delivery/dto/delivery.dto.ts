@@ -53,6 +53,57 @@ export class AssignDeliveryDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  /** Accuratess: الخدمة */
+  @IsOptional()
+  @IsNumber()
+  serviceId?: number;
+
+  /** Accuratess: نوع الطرد */
+  @IsOptional()
+  @IsString()
+  typeCode?: string;
+
+  /** Accuratess: نوع السعر */
+  @IsOptional()
+  @IsString()
+  priceTypeCode?: string;
+
+  /** Accuratess: نوع الدفع */
+  @IsOptional()
+  @IsString()
+  paymentTypeCode?: string;
+
+  /** Accuratess: فتح الطرد */
+  @IsOptional()
+  @IsString()
+  openableCode?: string;
+}
+
+export class FulfillOrderDto {
+  @IsOptional()
+  @IsBoolean()
+  createShipment?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  serviceId?: number;
+
+  @IsOptional()
+  @IsString()
+  typeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  priceTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  openableCode?: string;
 }
 
 export class UpdateDeliveryStatusDto {
