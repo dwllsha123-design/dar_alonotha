@@ -155,8 +155,18 @@ export class StoreService {
       areaDetails: tripoliDetails,
     };
 
-    // EXTERNAL cities: Accuratess zones (live). Fallback to curated list if offline.
-    const fromCarrier = await this.accuratess.listDestinationCitiesForCheckout();
+    // EXTERNAL cities: Accuratess zones (live). Fallback to curated list if offline/slow.
+    let fromCarrier: Array<{ nameAr: string; areas: string[] }> = [];
+    try {
+      fromCarrier = await Promise.race([
+        this.accuratess.listDestinationCitiesForCheckout(),
+        new Promise<Array<{ nameAr: string; areas: string[] }>>((resolve) => {
+          setTimeout(() => resolve([]), 4000);
+        }),
+      ]);
+    } catch {
+      fromCarrier = [];
+    }
     const externalSource =
       fromCarrier.length > 0
         ? fromCarrier

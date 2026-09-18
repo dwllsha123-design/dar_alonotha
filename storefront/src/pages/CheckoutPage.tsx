@@ -52,8 +52,9 @@ export function CheckoutPage() {
   const [phone, setPhone] = useState(user?.phone || '');
   const [cities, setCities] = useState<DeliveryCity[]>([]);
   const [notesMap, setNotesMap] = useState<{ internal?: string; external?: string }>({});
-  const [city, setCity] = useState('طرابلس');
+  const [city, setCity] = useState('');
   const [area, setArea] = useState('');
+  const [citiesError, setCitiesError] = useState('');
   const [landmark, setLandmark] = useState('');
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('COD');
@@ -70,15 +71,19 @@ export function CheckoutPage() {
       '/store/delivery-options',
     )
       .then((d) => {
-        setCities(d.cities || []);
+        const list = d.cities || [];
+        setCities(list);
         setNotesMap(d.notes || {});
-        const first = d.cities?.[0];
+        setCitiesError(list.length ? '' : 'تعذر تحميل المدن. أعيدي تحميل الصفحة.');
+        const first = list[0];
         if (first) {
           setCity(first.nameAr);
           setArea(first.areas[0] || '');
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        setCitiesError('تعذر تحميل المدن. أعيدي تحميل الصفحة.');
+      });
   }, []);
 
   useEffect(() => {
@@ -243,13 +248,18 @@ export function CheckoutPage() {
               setArea(found?.areas[0] || '');
             }}
             required
+            disabled={!cities.length}
           >
+            {!cities.length ? <option value="">جاري تحميل المدن…</option> : null}
             {cities.map((c) => (
               <option key={c.nameAr} value={c.nameAr}>
                 {c.nameAr}
               </option>
             ))}
           </select>
+          {citiesError ? (
+            <span style={{ color: '#c45c5c', fontSize: 13 }}>{citiesError}</span>
+          ) : null}
         </label>
         <label>
           المنطقة

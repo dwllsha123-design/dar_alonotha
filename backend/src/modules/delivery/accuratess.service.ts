@@ -563,53 +563,18 @@ export class AccuratessService {
     }
 
     try {
-      const serviceId = await this.resolveServiceId().catch(() => 0);
-      const serviceFilter =
-        Number.isFinite(serviceId) && serviceId > 0
-          ? { service: { serviceId } }
-          : {};
-
-      let zones = await this.listZonesDropdown({
-        active: true,
-        ...serviceFilter,
-      });
-      if (!zones.length) {
-        zones = await this.listZonesDropdown({ active: true });
-      }
+      // Keep checkout listing cheap: one zones query, no service discovery / child probes.
+      let zones = await this.listZonesDropdown({ active: true });
       if (!zones.length) {
         zones = await this.listZonesDropdown({});
       }
 
-      let candidates = zones.filter(
+      const candidates = zones.filter(
         (z) =>
           Boolean((z.name || '').trim()) &&
           !this.isPaymentVariantZone(z.name) &&
           !this.isTripoliZoneName(z.name),
       );
-
-      // Flat mega-lists include neighborhoods: keep only parent zones (have children).
-      if (candidates.length > 80) {
-        const parents: AccuratessZone[] = [];
-        const batchSize = 15;
-        for (let i = 0; i < candidates.length; i += batchSize) {
-          const batch = candidates.slice(i, i + batchSize);
-          const flags = await Promise.all(
-            batch.map(async (z) => {
-              const children = await this.listZonesDropdown({
-                parentId: z.id,
-                active: true,
-              });
-              return children.some((c) => !this.isPaymentVariantZone(c.name))
-                ? z
-                : null;
-            }),
-          );
-          for (const z of flags) {
-            if (z) parents.push(z);
-          }
-        }
-        if (parents.length) candidates = parents;
-      }
 
       const citiesMap = new Map<string, AccuratessCheckoutCity>();
       for (const z of candidates) {
